@@ -1,0 +1,7 @@
+{
+  "name": "list_agents",
+  "description": "List all agents currently connected to the mesh network, including their skills, health status, and WebRTC peer IDs.",
+  "version": "2.0.0",
+  "category": "Mesh",
+  "parameters": {}
+}

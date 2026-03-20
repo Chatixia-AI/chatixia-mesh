@@ -1,0 +1,13 @@
+{
+  "name": "mesh_broadcast",
+  "description": "Broadcast a message to all agents connected to the mesh network.",
+  "version": "1.0.0",
+  "category": "Mesh",
+  "parameters": {
+    "message": {
+      "type": "string",
+      "description": "The message to broadcast to all agents",
+      "required": true
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# Chatixia Mesh Agent Configuration
+name: my-agent
+
+# Registry server URL
+registry: "http://localhost:8080"
+
+# LLM provider: azure | ollama | openai
+provider: azure
+model: gpt-4o
+
+# Sidecar configuration
+sidecar:
+  binary: ./target/release/chatixia-sidecar
+  api_key: ak_dev_001
+  socket: /tmp/chatixia-sidecar.sock
+
+# Skills to load
+skills:
+  builtin:
+    - calculator
+    - delegate
+    - list_agents
+    - mesh_send
+    - mesh_broadcast
+    - shell
+    - search_knowledge
+  dirs: []  # additional skill directories
+
+# Autonomous goals
+goals: []

@@ -1,0 +1,28 @@
+{
+  "name": "delegate",
+  "description": "Delegate a task to another agent in the mesh. The registry routes by skill or target agent ID. The task is queued and executed by the target agent.",
+  "version": "2.0.0",
+  "category": "Mesh",
+  "parameters": {
+    "message": {
+      "type": "string",
+      "description": "The task description or prompt to send to the target agent",
+      "required": true
+    },
+    "target_agent_id": {
+      "type": "string",
+      "description": "The ID of the target agent. If omitted, routes by skill.",
+      "default": ""
+    },
+    "skill": {
+      "type": "string",
+      "description": "The skill to invoke on the target agent. Used for routing if no target specified.",
+      "default": ""
+    },
+    "wait": {
+      "type": "boolean",
+      "description": "Whether to wait for the result (blocking) or return immediately.",
+      "default": true
+    }
+  }
+}
