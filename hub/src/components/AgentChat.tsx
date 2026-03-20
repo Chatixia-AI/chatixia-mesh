@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { submitTask } from '../api'
+import { color, font, spacing, glass, radius, shadow, gradient } from '../theme'
 
 interface Props {
   agentId: string
@@ -19,34 +20,55 @@ export function AgentChat({ agentId, onClose }: Props) {
         source_agent_id: 'hub-user',
         payload: { message: message.trim(), type: 'user_intervention' },
       })
-      setStatus(`task submitted: ${result.task_id}`)
+      setStatus(`Task submitted: ${result.task_id}`)
       setMessage('')
     } catch (e) {
-      setStatus(`error: ${e}`)
+      setStatus(`Error: ${e}`)
     }
   }
 
   return (
     <div style={{
-      border: '1px solid #2a3a4e',
-      borderRadius: 4,
-      background: '#0d1117',
-      padding: 16,
+      ...glass.card,
+      borderRadius: radius.lg,
+      padding: spacing[6],
+      border: `1px solid ${color.outlineVariant}`,
+      boxShadow: shadow.ambient,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <h3 style={{ fontSize: 12, fontWeight: 600, color: '#60a5fa' }}>
-          intervene: {agentId}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: spacing[5],
+      }}>
+        <h3 style={{
+          fontSize: '1rem',
+          fontWeight: 600,
+          fontFamily: font.display,
+          color: color.primary,
+        }}>
+          intervene <span style={{ color: color.onSurfaceMuted, fontWeight: 400 }}>//</span> <span style={{ fontFamily: font.mono, fontSize: '0.85rem' }}>{agentId}</span>
         </h3>
         <button
           onClick={onClose}
           style={{
-            marginLeft: 'auto', background: 'none', border: '1px solid #1e2a3a',
-            color: '#6b7d93', padding: '2px 8px', borderRadius: 3, cursor: 'pointer',
-            fontFamily: 'inherit', fontSize: 11,
+            marginLeft: 'auto',
+            background: color.surfaceContainerLow,
+            border: 'none',
+            color: color.onSurfaceMuted,
+            padding: '6px 14px',
+            borderRadius: radius.sm,
+            cursor: 'pointer',
+            fontFamily: font.display,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            transition: 'background 0.15s ease',
           }}
-        >close</button>
+        >Close</button>
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+
+      <div style={{ display: 'flex', gap: spacing[3] }}>
         <input
           type="text"
           value={message}
@@ -54,22 +76,53 @@ export function AgentChat({ agentId, onClose }: Props) {
           onKeyDown={e => e.key === 'Enter' && send()}
           placeholder="Send a task or message to this agent..."
           style={{
-            flex: 1, background: '#131921', border: '1px solid #1e2a3a',
-            color: '#c5cdd8', padding: '8px 12px', borderRadius: 4,
-            fontFamily: 'inherit', fontSize: 12, outline: 'none',
+            flex: 1,
+            background: color.surfaceContainerLow,
+            border: 'none',
+            borderBottom: '2px solid transparent',
+            color: color.onSurface,
+            padding: `${spacing[3]} ${spacing[4]}`,
+            borderRadius: radius.sm,
+            fontFamily: font.body,
+            fontSize: '0.875rem',
+            outline: 'none',
+            transition: 'border-color 0.15s ease, background 0.15s ease',
+          }}
+          onFocus={e => {
+            e.currentTarget.style.background = color.surfaceContainerLowest
+            e.currentTarget.style.borderBottomColor = color.primaryContainer
+          }}
+          onBlur={e => {
+            e.currentTarget.style.background = color.surfaceContainerLow
+            e.currentTarget.style.borderBottomColor = 'transparent'
           }}
         />
         <button
           onClick={send}
           style={{
-            background: '#22c55e15', border: '1px solid #22c55e30',
-            color: '#4ade80', padding: '8px 16px', borderRadius: 4,
-            fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: gradient.primary,
+            border: 'none',
+            color: color.onPrimary,
+            padding: `${spacing[3]} ${spacing[5]}`,
+            borderRadius: radius.md,
+            fontFamily: font.display,
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            letterSpacing: '0.02em',
+            cursor: 'pointer',
+            boxShadow: shadow.primaryGlow,
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
           }}
-        >send</button>
+        >Send</button>
       </div>
+
       {status && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#6b7d93' }}>{status}</div>
+        <div style={{
+          marginTop: spacing[3],
+          fontSize: '0.72rem',
+          fontFamily: font.mono,
+          color: color.onSurfaceMuted,
+        }}>{status}</div>
       )}
     </div>
   )

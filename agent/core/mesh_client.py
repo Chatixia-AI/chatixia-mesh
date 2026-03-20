@@ -74,6 +74,9 @@ class MeshClient:
 
     async def start(self, auto_spawn_sidecar: bool = True) -> None:
         """Start the mesh client — optionally spawn the sidecar process."""
+        # Remove stale socket from previous crash
+        Path(self._socket_path).unlink(missing_ok=True)
+
         if auto_spawn_sidecar:
             await self._spawn_sidecar()
 

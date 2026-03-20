@@ -34,3 +34,5 @@ Thumbs.db
 
 # Sidecar socket
 /tmp/chatixia-*.sock
+
+firebase-debug.log
