@@ -67,6 +67,44 @@ export async function fetchTopology(): Promise<Topology> {
   return res.json();
 }
 
+// ─── Pairing / Approval ────────────────────────────────────────────────────
+
+export interface OnboardingEntry {
+  id: string;
+  agent_name: string;
+  peer_id: string;
+  device_token?: string;
+  status: string;  // "pending_approval" | "approved" | "rejected" | "revoked"
+  created_at: number;
+  updated_at: number;
+}
+
+export async function fetchPendingApprovals(): Promise<OnboardingEntry[]> {
+  const res = await fetch(`${BASE}/api/pairing/pending`);
+  return res.json();
+}
+
+export async function approveAgent(id: string): Promise<OnboardingEntry> {
+  const res = await fetch(`${BASE}/api/pairing/${id}/approve`, { method: 'POST' });
+  return res.json();
+}
+
+export async function rejectAgent(id: string): Promise<OnboardingEntry> {
+  const res = await fetch(`${BASE}/api/pairing/${id}/reject`, { method: 'POST' });
+  return res.json();
+}
+
+export async function revokeAgent(id: string): Promise<void> {
+  await fetch(`${BASE}/api/pairing/${id}/revoke`, { method: 'POST' });
+}
+
+export async function generateInviteCode(): Promise<{ code: string; expires_in: number }> {
+  const res = await fetch(`${BASE}/api/pairing/generate-code`, { method: 'POST' });
+  return res.json();
+}
+
+// ─── Tasks ─────────────────────────────────────────────────────────────────
+
 export async function submitTask(task: {
   skill?: string;
   target_agent_id: string;
