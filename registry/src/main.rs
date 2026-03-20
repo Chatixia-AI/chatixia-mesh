@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
         // Registry
         .route("/api/registry/agents", get(registry::list_agents))
         .route("/api/registry/agents", post(registry::register_agent))
-        .route("/api/registry/agents/{agent_id}", get(registry::get_agent))
+        .route("/api/registry/agents/{agent_id}", get(registry::get_agent).delete(registry::delete_agent))
         .route("/api/registry/route", get(registry::route_by_skill))
         // Hub — tasks
         .route("/api/hub/tasks", post(hub::submit_task))

@@ -1,50 +1,135 @@
 import type { Task } from '../api'
+import { color, font, spacing, glass, radius, shadow } from '../theme'
 
-const stateColors: Record<string, string> = {
-  pending: '#fbbf24',
-  assigned: '#60a5fa',
-  completed: '#4ade80',
-  failed: '#f87171',
+const stateStyles: Record<string, { color: string; bg: string }> = {
+  pending: { color: color.stale, bg: 'rgba(217,119,6,0.08)' },
+  assigned: { color: color.info, bg: 'rgba(2,132,199,0.08)' },
+  completed: { color: color.active, bg: 'rgba(22,163,74,0.08)' },
+  failed: { color: color.offline, bg: 'rgba(220,38,38,0.08)' },
 }
 
 export function TaskQueue({ tasks }: { tasks: Task[] }) {
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <h2 style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6b7d93' }}>task queue</h2>
-        <span style={{ fontSize: 11, color: '#4a5568', background: '#131921', border: '1px solid #1e2a3a', padding: '1px 6px', borderRadius: 3 }}>{tasks.length}</span>
-      </div>
+      <h2 style={{
+        fontSize: '1.6rem',
+        fontWeight: 700,
+        fontFamily: font.display,
+        letterSpacing: '-0.02em',
+        color: color.onSurface,
+        marginBottom: spacing[4],
+      }}>
+        <span style={{ color: color.onSurfaceMuted, fontWeight: 400 }}>// </span>task queue
+        <span style={{
+          fontSize: '0.75rem',
+          fontWeight: 500,
+          color: color.onSurfaceMuted,
+          marginLeft: 12,
+        }}>{tasks.length}</span>
+      </h2>
+
       {!tasks.length ? (
-        <div style={{ textAlign: 'center', padding: 24, color: '#4a5568', fontSize: 12 }}>no tasks</div>
+        <div style={{
+          ...glass.card,
+          borderRadius: radius.lg,
+          padding: spacing[12],
+          textAlign: 'center',
+          color: color.onSurfaceMuted,
+          fontSize: '0.875rem',
+          fontFamily: font.body,
+          border: `1px solid ${color.outlineVariant}`,
+          boxShadow: shadow.ambient,
+        }}>
+          No tasks in queue
+        </div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #1e2a3a', borderRadius: 4 }}>
-          <thead>
-            <tr style={{ background: '#131921' }}>
-              {['id', 'state', 'skill', 'source', 'target', 'age'].map(h => (
-                <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: '#4a5568', borderBottom: '1px solid #1e2a3a' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map(t => (
-              <tr key={t.id} style={{ background: '#0d1117', borderBottom: '1px solid #1e2a3a' }}>
-                <td style={{ padding: '8px 14px', fontSize: 12, color: '#6b7d93' }}>{t.id}</td>
-                <td style={{ padding: '8px 14px' }}>
-                  <span style={{
-                    fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-                    padding: '2px 6px', borderRadius: 3,
-                    color: stateColors[t.state] || '#6b7d93',
-                    background: `${stateColors[t.state] || '#6b7d93'}15`,
-                  }}>{t.state}</span>
-                </td>
-                <td style={{ padding: '8px 14px', fontSize: 12 }}>{t.skill || '—'}</td>
-                <td style={{ padding: '8px 14px', fontSize: 12, color: '#6b7d93' }}>{t.source_agent_id || '—'}</td>
-                <td style={{ padding: '8px 14px', fontSize: 12, color: '#6b7d93' }}>{t.target_agent_id || t.assigned_agent_id || '—'}</td>
-                <td style={{ padding: '8px 14px', fontSize: 12, color: '#6b7d93' }}>{formatAge(t.created_at)}</td>
-              </tr>
+        <div style={{
+          ...glass.card,
+          borderRadius: radius.lg,
+          border: `1px solid ${color.outlineVariant}`,
+          boxShadow: shadow.ambient,
+          overflow: 'hidden',
+        }}>
+          {/* Header row */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1.5fr 0.8fr 1fr 1fr 1fr 0.6fr',
+            padding: `${spacing[3]} ${spacing[5]}`,
+            background: color.surfaceContainerLow,
+          }}>
+            {['ID', 'State', 'Skill', 'Source', 'Target', 'Age'].map(h => (
+              <div key={h} style={{
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                fontFamily: font.display,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: color.onSurfaceMuted,
+              }}>{h}</div>
             ))}
-          </tbody>
-        </table>
+          </div>
+
+          {/* Task rows — separated by spacing, no divider lines */}
+          <div style={{ padding: `${spacing[2]} 0` }}>
+            {tasks.map(t => {
+              const style = stateStyles[t.state] || { color: color.onSurfaceMuted, bg: 'transparent' }
+              return (
+                <div
+                  key={t.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1.5fr 0.8fr 1fr 1fr 1fr 0.6fr',
+                    padding: `${spacing[3]} ${spacing[5]}`,
+                    alignItems: 'center',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = color.surfaceContainerLow }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <div style={{
+                    fontSize: '0.73rem',
+                    fontFamily: font.mono,
+                    color: color.onSurfaceMuted,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    paddingRight: spacing[3],
+                  }}>{t.id}</div>
+
+                  <div>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      fontFamily: font.display,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      padding: '3px 10px',
+                      borderRadius: radius.md,
+                      color: style.color,
+                      background: style.bg,
+                    }}>{t.state}</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.73rem', fontFamily: font.mono, color: color.onSurface }}>
+                    {t.skill || '—'}
+                  </div>
+
+                  <div style={{ fontSize: '0.73rem', fontFamily: font.mono, color: color.onSurfaceMuted }}>
+                    {t.source_agent_id || '—'}
+                  </div>
+
+                  <div style={{ fontSize: '0.73rem', fontFamily: font.mono, color: color.onSurfaceMuted }}>
+                    {t.target_agent_id || t.assigned_agent_id || '—'}
+                  </div>
+
+                  <div style={{ fontSize: '0.73rem', fontFamily: font.mono, color: color.onSurfaceMuted }}>
+                    {formatAge(t.created_at)}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

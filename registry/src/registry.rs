@@ -179,6 +179,19 @@ pub async fn list_agents(State(state): State<AppState>) -> Json<Vec<AgentRecord>
     Json(state.registry.list())
 }
 
+/// DELETE /api/registry/agents/:agent_id — unregister an agent.
+pub async fn delete_agent(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Json<serde_json::Value> {
+    if state.registry.agents.remove(&agent_id).is_some() {
+        info!("[REG] agent unregistered: {}", agent_id);
+        Json(serde_json::json!({ "status": "ok" }))
+    } else {
+        Json(serde_json::json!({ "error": "not found" }))
+    }
+}
+
 /// GET /api/registry/agents/:agent_id — get a specific agent.
 pub async fn get_agent(
     State(state): State<AppState>,

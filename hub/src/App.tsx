@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Agent, Task, Topology, fetchAgents, fetchTasks, fetchTopology, submitTask } from './api'
+import { Agent, Task, Topology, fetchAgents, fetchTasks, fetchTopology } from './api'
 import { AgentCards } from './components/AgentCards'
 import { TaskQueue } from './components/TaskQueue'
 import { NetworkTopology } from './components/NetworkTopology'
 import { AgentChat } from './components/AgentChat'
+import { color, font, spacing, glass, gradient, radius, shadow } from './theme'
 
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [topology, setTopology] = useState<Topology | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [clock, setClock] = useState(() => new Date().toLocaleTimeString('en', { hour12: false }))
 
   useEffect(() => {
     const refresh = async () => {
@@ -29,35 +31,101 @@ export default function App() {
 
     refresh()
     const interval = setInterval(refresh, 5000)
-    return () => clearInterval(interval)
+    const tick = setInterval(() => setClock(new Date().toLocaleTimeString('en', { hour12: false })), 1000)
+    return () => { clearInterval(interval); clearInterval(tick) }
   }, [])
 
   const activeCount = agents.filter(a => a.health === 'active').length
   const pendingCount = tasks.filter(t => t.state === 'pending').length
 
   return (
-    <div style={{ fontFamily: "'JetBrains Mono', monospace", background: '#0a0e14', color: '#c5cdd8', minHeight: '100vh' }}>
-      {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', borderBottom: '1px solid #1e2a3a', background: '#0d1117' }}>
-        <div style={{ border: '1px solid #22c55e', color: '#4ade80', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, borderRadius: 3 }}>&gt;_</div>
-        <h1 style={{ fontSize: 14, fontWeight: 600 }}>chatixia <span style={{ color: '#4a5568' }}>//</span> mesh hub</h1>
-        <span style={{ color: '#6b7d93', fontSize: 12, marginLeft: 8 }}>agent network monitor</span>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#6b7d93' }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', animation: 'blink 2s ease-in-out infinite' }} />
-          {new Date().toLocaleTimeString('en', { hour12: false })}
+    <div style={{
+      fontFamily: font.body,
+      background: color.surface,
+      color: color.onSurface,
+      minHeight: '100vh',
+    }}>
+      {/* Glass Header */}
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: `${spacing[4]} ${spacing[12]}`,
+        ...glass.header,
+      }}>
+        <div style={{
+          background: gradient.primary,
+          color: color.onPrimary,
+          width: 36,
+          height: 36,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 13,
+          fontWeight: 700,
+          fontFamily: font.mono,
+          borderRadius: radius.sm,
+        }}>&gt;_</div>
+        <div>
+          <h1 style={{
+            fontSize: '1.1rem',
+            fontWeight: 600,
+            fontFamily: font.display,
+            letterSpacing: '-0.02em',
+            color: color.onSurface,
+          }}>chatixia <span style={{ color: color.onSurfaceMuted, fontWeight: 400 }}>//</span> <span style={{ fontWeight: 400, color: color.onSurfaceMuted }}>mesh hub</span></h1>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            color: color.onSurfaceMuted,
+          }}>
+            <div style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: color.active,
+              boxShadow: `0 0 8px ${color.active}`,
+              animation: 'pulse 2s ease-in-out infinite',
+            }} />
+            connected
+          </div>
+          <span style={{
+            fontFamily: font.mono,
+            fontSize: '0.72rem',
+            fontWeight: 500,
+            color: color.onSurfaceMuted,
+            letterSpacing: '-0.02em',
+          }}>{clock}</span>
         </div>
       </header>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 1, background: '#1e2a3a', borderBottom: '1px solid #1e2a3a' }}>
-        <Stat label="agents online" value={activeCount} color="#4ade80" />
-        <Stat label="total agents" value={agents.length} color="#60a5fa" />
-        <Stat label="pending tasks" value={pendingCount} color="#fbbf24" />
-        <Stat label="total tasks" value={tasks.length} color="#6b7d93" />
+      {/* Stats Row */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: spacing[4],
+        padding: `${spacing[6]} ${spacing[12]}`,
+      }}>
+        <StatCard label="agents online" value={activeCount} accent={color.active} />
+        <StatCard label="total agents" value={agents.length} accent={color.primary} />
+        <StatCard label="pending tasks" value={pendingCount} accent={color.stale} />
+        <StatCard label="total tasks" value={tasks.length} accent={color.onSurfaceMuted} />
       </div>
 
-      {/* Main content */}
-      <div style={{ padding: '20px 24px', display: 'grid', gap: 24 }}>
+      {/* Main Content */}
+      <div style={{
+        padding: `0 ${spacing[12]} ${spacing[12]}`,
+        display: 'grid',
+        gap: spacing[8],
+      }}>
         <AgentCards agents={agents} onSelect={setSelectedAgent} selectedId={selectedAgent} />
 
         {selectedAgent && (
@@ -68,16 +136,43 @@ export default function App() {
         <TaskQueue tasks={tasks} />
       </div>
 
-      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }`}</style>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </div>
   )
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div style={{ flex: 1, padding: '12px 20px', background: '#0d1117' }}>
-      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.08em', color: '#4a5568', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color }}>{value}</div>
+    <div style={{
+      ...glass.card,
+      borderRadius: radius.lg,
+      padding: spacing[6],
+      border: `1px solid ${color.outlineVariant}`,
+      boxShadow: shadow.ambient,
+      transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+    }}>
+      <div style={{
+        fontSize: '0.7rem',
+        fontWeight: 600,
+        fontFamily: font.display,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        color: color.onSurfaceMuted,
+        marginBottom: spacing[2],
+      }}>{label}</div>
+      <div style={{
+        fontSize: '2.2rem',
+        fontWeight: 700,
+        fontFamily: font.mono,
+        letterSpacing: '-0.04em',
+        color: accent,
+        lineHeight: 1,
+      }}>{value}</div>
     </div>
   )
 }
