@@ -13,6 +13,9 @@ __pycache__/
 .venv/
 *.egg-info/
 
+# Secrets
+api_keys.json
+
 # Environment
 .env
 *.db
