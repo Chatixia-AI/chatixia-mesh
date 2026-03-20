@@ -7,6 +7,7 @@
 
 mod auth;
 mod hub;
+mod pairing;
 mod registry;
 mod signaling;
 mod topology;
@@ -30,6 +31,7 @@ use tracing::{error, info};
 
 use auth::AuthState;
 use hub::HubState;
+use pairing::PairingState;
 use registry::RegistryState;
 use signaling::SignalingState;
 
@@ -40,6 +42,7 @@ pub struct AppState {
     pub signaling: Arc<SignalingState>,
     pub registry: Arc<RegistryState>,
     pub hub: Arc<HubState>,
+    pub pairing: Arc<PairingState>,
 }
 
 #[tokio::main]
@@ -60,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
         signaling: Arc::new(SignalingState::new()),
         registry: Arc::new(RegistryState::new()),
         hub: Arc::new(HubState::new()),
+        pairing: Arc::new(PairingState::new()),
     };
 
     // Spawn background tasks
@@ -68,6 +72,9 @@ async fn main() -> anyhow::Result<()> {
 
     let hub = state.hub.clone();
     tokio::spawn(async move { hub.expire_tasks_loop().await });
+
+    let pairing = state.pairing.clone();
+    tokio::spawn(async move { pairing.cleanup_loop().await });
 
     let app = Router::new()
         // Auth
@@ -87,6 +94,14 @@ async fn main() -> anyhow::Result<()> {
         // Hub — monitoring
         .route("/api/hub/heartbeat", post(registry::heartbeat))
         .route("/api/hub/network/topology", get(topology::network_topology))
+        // Pairing + approval
+        .route("/api/pairing/generate-code", post(pairing::generate_code_handler))
+        .route("/api/pairing/pair", post(pairing::pair_handler))
+        .route("/api/pairing/pending", get(pairing::list_pending_handler))
+        .route("/api/pairing/all", get(pairing::list_all_handler))
+        .route("/api/pairing/{id}/approve", post(pairing::approve_handler))
+        .route("/api/pairing/{id}/reject", post(pairing::reject_handler))
+        .route("/api/pairing/{id}/revoke", post(pairing::revoke_handler))
         // ICE config (STUN/TURN)
         .route("/api/config", get(auth::ice_config))
         // Static files (hub dashboard + web client)
@@ -98,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
     info!("registry listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }
@@ -158,7 +173,9 @@ async fn handle_ws(mut socket: WebSocket, peer_id: String, state: AppState) {
                                 error!("[WS] peer_id mismatch: expected={}, got={}", peer_id, sm.peer_id);
                                 continue;
                             }
-                            state.signaling.handle_message(sm);
+                            let approved = state.pairing.approved_peer_ids();
+                            let legacy = state.auth.api_key_peer_ids();
+                            state.signaling.handle_message(sm, &approved, &legacy);
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,

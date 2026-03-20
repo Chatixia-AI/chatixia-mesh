@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Agent, Task, Topology, fetchAgents, fetchTasks, fetchTopology } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import { Agent, Task, Topology, OnboardingEntry, fetchAgents, fetchTasks, fetchTopology, fetchPendingApprovals } from './api'
 import { AgentCards } from './components/AgentCards'
 import { TaskQueue } from './components/TaskQueue'
 import { NetworkTopology } from './components/NetworkTopology'
 import { AgentChat } from './components/AgentChat'
+import { ApprovalQueue } from './components/ApprovalQueue'
 import { color, font, spacing, glass, gradient, radius, shadow } from './theme'
 
 export default function App() {
@@ -11,29 +12,32 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [topology, setTopology] = useState<Topology | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<OnboardingEntry[]>([])
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString('en', { hour12: false }))
 
-  useEffect(() => {
-    const refresh = async () => {
-      try {
-        const [a, t, topo] = await Promise.all([
-          fetchAgents(),
-          fetchTasks(),
-          fetchTopology(),
-        ])
-        setAgents(Array.isArray(a) ? a : [])
-        setTasks(Array.isArray(t) ? t : [])
-        setTopology(topo)
-      } catch (e) {
-        console.error('refresh error:', e)
-      }
+  const refresh = useCallback(async () => {
+    try {
+      const [a, t, topo, pending] = await Promise.all([
+        fetchAgents(),
+        fetchTasks(),
+        fetchTopology(),
+        fetchPendingApprovals(),
+      ])
+      setAgents(Array.isArray(a) ? a : [])
+      setTasks(Array.isArray(t) ? t : [])
+      setTopology(topo)
+      setPendingApprovals(Array.isArray(pending) ? pending : [])
+    } catch (e) {
+      console.error('refresh error:', e)
     }
+  }, [])
 
+  useEffect(() => {
     refresh()
     const interval = setInterval(refresh, 5000)
     const tick = setInterval(() => setClock(new Date().toLocaleTimeString('en', { hour12: false })), 1000)
     return () => { clearInterval(interval); clearInterval(tick) }
-  }, [])
+  }, [refresh])
 
   const activeCount = agents.filter(a => a.health === 'active').length
   const pendingCount = tasks.filter(t => t.state === 'pending').length
@@ -117,7 +121,7 @@ export default function App() {
         <StatCard label="agents online" value={activeCount} accent={color.active} />
         <StatCard label="total agents" value={agents.length} accent={color.primary} />
         <StatCard label="pending tasks" value={pendingCount} accent={color.stale} />
-        <StatCard label="total tasks" value={tasks.length} accent={color.onSurfaceMuted} />
+        <StatCard label="awaiting approval" value={pendingApprovals.length} accent={color.stale} />
       </div>
 
       {/* Main Content */}
@@ -126,6 +130,8 @@ export default function App() {
         display: 'grid',
         gap: spacing[8],
       }}>
+        <ApprovalQueue entries={pendingApprovals} onAction={refresh} />
+
         <AgentCards agents={agents} onSelect={setSelectedAgent} selectedId={selectedAgent} />
 
         {selectedAgent && (
