@@ -1,5 +1,7 @@
 //! WebSocket signaling relay for WebRTC — supports N:N mesh topology.
 
+use std::collections::HashSet;
+
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -47,12 +49,32 @@ impl SignalingState {
     }
 
     /// Handle an incoming signaling message — relay to target or broadcast.
-    pub fn handle_message(&self, msg: SignalingMessage) {
+    ///
+    /// `approved_peers` — peer_ids approved through the pairing system.
+    /// `legacy_peers` — peer_ids with static API keys (auto-approved).
+    /// Peers in either set are considered authorized; others get an empty peer_list.
+    pub fn handle_message(
+        &self,
+        msg: SignalingMessage,
+        approved_peers: &HashSet<String>,
+        legacy_peers: &HashSet<String>,
+    ) {
+        let is_authorized =
+            |pid: &str| approved_peers.contains(pid) || legacy_peers.contains(pid);
+
         match msg.msg_type.as_str() {
             "register" => {
                 info!("[SIG] register from peer_id={}", msg.peer_id);
-                // Send back the list of connected peers so this peer can initiate offers
-                let peers = self.connected_peers();
+                // Only authorized peers see other authorized peers
+                let peers: Vec<String> = if is_authorized(&msg.peer_id) {
+                    self.connected_peers()
+                        .into_iter()
+                        .filter(|p| p != &msg.peer_id && is_authorized(p))
+                        .collect()
+                } else {
+                    // Pending/unknown peer gets empty list (can't communicate yet)
+                    vec![]
+                };
                 if let Some(sender) = self.peers.get(&msg.peer_id) {
                     let response = serde_json::json!({
                         "type": "peer_list",

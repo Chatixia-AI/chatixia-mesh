@@ -32,13 +32,14 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 | `src/signaling.rs` | WebSocket relay for SDP/ICE messages, peer tracking |
 | `src/registry.rs` | Agent registration, discovery, health checks, skill routing |
 | `src/hub.rs` | Task queue (submit, poll, update, expire), task lifecycle |
+| `src/pairing.rs` | Agent pairing + approval: invite codes, onboarding pipeline, revocation |
 | `src/topology.rs` | Mesh topology endpoint for dashboard visualization |
 
 ### Key Structs
 
 | Struct | Module | Description |
 |--------|--------|-------------|
-| `AppState` | `main` | Shared state: `Arc<AuthState>`, `Arc<SignalingState>`, `Arc<RegistryState>`, `Arc<HubState>` |
+| `AppState` | `main` | Shared state: `Arc<AuthState>`, `Arc<SignalingState>`, `Arc<RegistryState>`, `Arc<HubState>`, `Arc<PairingState>` |
 | `Claims` | `auth` | JWT claims: `sub` (peer_id), `role`, `exp`, `iat` |
 | `ApiKeyEntry` | `auth` | API key mapping: `peer_id`, `role` |
 | `AuthState` | `auth` | JWT secret + API key store (`RwLock<HashMap>`) |
@@ -53,6 +54,9 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 | `TaskUpdate` | `hub` | Task update: `state`, `result`, `error` |
 | `Task` | `hub` | Full task record with lifecycle timestamps |
 | `HubState` | `hub` | Task store (`DashMap<String, Task>`) |
+| `InviteCode` | `pairing` | Ephemeral 6-digit invite code with TTL |
+| `OnboardingEntry` | `pairing` | Agent lifecycle: id, agent_name, peer_id, device_token, status (pending_approval→approved→revoked) |
+| `PairingState` | `pairing` | Invite codes (`DashMap`), onboarding entries (`DashMap`), rate limiter (`DashMap`) |
 | `TopologyNode` | `topology` | Agent node for visualization: position, peer ID, skills count, mesh peers |
 | `TopologyResponse` | `topology` | `nodes` + `mesh_edges` |
 | `MeshEdge` | `topology` | Edge between two sidecar peer IDs |
@@ -73,7 +77,14 @@ GET  /api/hub/tasks/{task_id}        # Get task status (hub.rs)
 POST /api/hub/tasks/{task_id}        # Update task result (hub.rs)
 POST /api/hub/heartbeat              # Agent heartbeat — upserts agent record (registry.rs)
 GET  /api/hub/network/topology       # Mesh topology for visualization (topology.rs)
-GET  /api/config                     # ICE server config — STUN + optional TURN (auth.rs)
+POST /api/pairing/generate-code       # Generate 6-digit invite code (pairing.rs)
+POST /api/pairing/pair                # Redeem code, create pending entry (pairing.rs)
+GET  /api/pairing/pending             # List pending approvals (pairing.rs)
+GET  /api/pairing/all                 # List all onboarding entries (pairing.rs)
+POST /api/pairing/{id}/approve        # Approve pending agent (pairing.rs)
+POST /api/pairing/{id}/reject         # Reject pending agent (pairing.rs)
+POST /api/pairing/{id}/revoke         # Revoke approved agent (pairing.rs)
+GET  /api/config                      # ICE server config — STUN + optional TURN (auth.rs)
 ```
 
 ### Background Tasks
@@ -82,6 +93,7 @@ GET  /api/config                     # ICE server config — STUN + optional TUR
 |------|----------|-------|
 | `health_check_loop` | 15s | Mark agents: active (<90s), stale (90–270s), offline (>270s) |
 | `expire_tasks_loop` | 30s | Fail pending/assigned tasks whose TTL has elapsed |
+| `cleanup_loop` (pairing) | 60s | Remove expired invite codes (>300s), prune rate-limit buckets |
 
 ### Environment Variables
 

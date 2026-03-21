@@ -134,6 +134,41 @@ Internet / LAN
 - Require JWT for all registry API endpoints (not just WebSocket)
 - Add role-based access (e.g., only `hub` role can query topology)
 
+### T8: Pairing Code Brute Force
+
+**Attack:** An attacker brute-forces 6-digit invite codes to join the mesh without authorization.
+
+**Mitigations:**
+- Rate limiting: 5 pairing attempts per IP per 60 seconds
+- Codes are single-use (consumed on first valid redemption)
+- Codes expire after 300 seconds (5 minutes)
+- Successful code redemption only creates a "pending_approval" entry — admin must still approve
+
+**Residual risk:** 6-digit code space (1M possibilities) is small. The 5-per-minute rate limit makes brute force impractical within the 5-minute TTL (~25 attempts max), but a targeted attacker with many IPs could attempt more. Consider longer codes or CAPTCHA for higher-security deployments.
+
+### T9: Unauthorized Approval of Pending Agents
+
+**Attack:** An attacker calls `POST /api/pairing/{id}/approve` to approve their own pending agent without admin authorization.
+
+**Mitigations:**
+- None currently — dashboard API endpoints are unauthenticated (consistent with all existing hub endpoints)
+
+**Recommended mitigations:**
+- Add authentication to all `/api/pairing/{id}/approve|reject|revoke` endpoints
+- Require a dashboard admin JWT or session token
+- Add audit logging for all approval/rejection actions
+
+### T10: Device Token Theft
+
+**Attack:** An attacker steals a device token (`dt_` + 32 hex) from a paired agent and uses it to impersonate that agent.
+
+**Mitigations:**
+- Device tokens are 128-bit random (infeasible to guess)
+- Tokens are only returned once at approval time
+- Revocation immediately invalidates the token
+
+**Residual risk:** If the token is intercepted in transit (approval response) or leaked from the agent's storage, it can be used until revoked. TLS on the registry would mitigate in-transit theft.
+
 ## Security Checklist for Production
 
 - [ ] Change `SIGNALING_SECRET` from default

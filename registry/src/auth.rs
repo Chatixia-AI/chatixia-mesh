@@ -110,35 +110,61 @@ impl AuthState {
     pub fn lookup_api_key(&self, key: &str) -> Option<ApiKeyEntry> {
         self.api_keys.read().ok()?.get(key).cloned()
     }
+
+    /// Return the set of all peer_ids that have static API keys (legacy agents).
+    pub fn api_key_peer_ids(&self) -> std::collections::HashSet<String> {
+        self.api_keys
+            .read()
+            .map(|keys| keys.values().map(|e| e.peer_id.clone()).collect())
+            .unwrap_or_default()
+    }
 }
 
-/// POST /api/token — exchange API key for JWT.
+/// POST /api/token — exchange API key or device token for JWT.
 pub async fn exchange_token(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let api_key = headers
-        .get("x-api-key")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    // Try API key first (existing path)
+    if let Some(api_key) = headers.get("x-api-key").and_then(|v| v.to_str().ok()) {
+        if let Some(entry) = state.auth.lookup_api_key(api_key) {
+            let token = state
+                .auth
+                .issue_token(&entry.peer_id, &entry.role)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let entry = state
-        .auth
-        .lookup_api_key(api_key)
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+            info!("[AUTH] issued token for peer_id={} (api_key)", entry.peer_id);
 
-    let token = state
-        .auth
-        .issue_token(&entry.peer_id, &entry.role)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            return Ok(Json(serde_json::json!({
+                "token": token,
+                "peer_id": entry.peer_id,
+                "role": entry.role
+            })));
+        }
+    }
 
-    info!("[AUTH] issued token for peer_id={}", entry.peer_id);
+    // Fallback: device token (for paired agents)
+    if let Some(device_token) = headers.get("x-device-token").and_then(|v| v.to_str().ok()) {
+        let entry = state
+            .pairing
+            .validate_device_token(device_token)
+            .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    Ok(Json(serde_json::json!({
-        "token": token,
-        "peer_id": entry.peer_id,
-        "role": entry.role
-    })))
+        let token = state
+            .auth
+            .issue_token(&entry.peer_id, "agent")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        info!("[AUTH] issued token for peer_id={} (device_token)", entry.peer_id);
+
+        return Ok(Json(serde_json::json!({
+            "token": token,
+            "peer_id": entry.peer_id,
+            "role": "agent"
+        })));
+    }
+
+    Err(StatusCode::UNAUTHORIZED)
 }
 
 /// GET /api/config — return ICE server configuration (STUN + optional TURN).

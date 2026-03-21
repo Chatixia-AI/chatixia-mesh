@@ -149,3 +149,25 @@
 - (+) Clean shutdown removes agent from dashboard instantly
 - (+) Stale/offline health check still catches hard crashes
 - (-) Agents that crash without clean shutdown still linger for up to 270s
+
+---
+
+## ADR-009: Hybrid Pairing + Approval for Agent Onboarding
+
+**Date:** 2026-03-20
+**Status:** Accepted
+
+**Context:** The original rust-p2p had a device pairing system (6-digit codes, device tokens, revocation) that was dropped when merging into chatixia-mesh. The mesh currently uses static API keys with no dynamic onboarding, no approval flow, no scoped visibility, and no revocation. New agents require manual `api_keys.json` edits and a restart.
+
+**Decision:** Implement a hybrid system combining pairing codes (from rust-p2p) with admin approval (via hub dashboard). Flow: existing agent generates invite code → new agent redeems code → status is "pending_approval" → admin approves in hub → agent receives device token → agent can exchange token for JWT and join mesh. Signaling filters peer_list to only show approved + legacy API-key peers.
+
+**Consequences:**
+
+- (+) Dynamic agent onboarding without editing config files or restarting
+- (+) Admin oversight — new agents require explicit approval before mesh access
+- (+) Scoped peer visibility — pending agents can't see or communicate with mesh peers
+- (+) Revocation — approved agents can be revoked, immediately losing mesh access
+- (+) Backward compatible — legacy API-key agents are auto-approved
+- (-) In-memory state — pairing data lost on registry restart (matches existing pattern)
+- (-) No push notification on approval — agent must poll `/api/token`
+- (-) Dashboard admin endpoints are unauthenticated (matches existing hub API pattern)
