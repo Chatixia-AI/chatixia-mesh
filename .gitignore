@@ -17,7 +17,11 @@ __pycache__/
 api_keys.json
 
 # Environment
+**/.env
 .env
+
+# User-specific agent manifests
+my-agent.yaml
 *.db
 *.db-wal
 *.db-shm
