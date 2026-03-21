@@ -53,8 +53,11 @@ Homepage = "https://github.com/Chatixia-AI/chatixia-mesh"
 Repository = "https://github.com/Chatixia-AI/chatixia-mesh"
 Issues = "https://github.com/Chatixia-AI/chatixia-mesh/issues"
 
+[tool.hatch.build.targets.sdist]
+include = ["chatixia/"]
+
 [tool.hatch.build.targets.wheel]
-packages = ["chatixia", "core", "skills"]
+packages = ["chatixia"]
 
 [build-system]
 requires = ["hatchling"]

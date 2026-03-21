@@ -26,6 +26,9 @@ my-agent.yaml
 *.db-wal
 *.db-shm
 
+# Meeting notes (local only)
+docs/meetings/
+
 # IDE
 .idea/
 .vscode/

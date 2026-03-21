@@ -46,8 +46,8 @@ cd hub && npm run dev
 | Registry          | `registry/src/main.rs`      |
 | Sidecar           | `sidecar/src/main.rs`       |
 | CLI               | `agent/chatixia/cli.py`     |
-| Agent mesh client | `agent/core/mesh_client.py` |
-| Mesh skills       | `agent/core/mesh_skills.py` |
+| Agent mesh client | `agent/chatixia/core/mesh_client.py` |
+| Mesh skills       | `agent/chatixia/core/mesh_skills.py` |
 | Hub dashboard     | `hub/src/App.tsx`           |
 
 ## Protocol

@@ -11,7 +11,7 @@ import socket
 import requests
 
 from chatixia.config import AgentConfig
-from core.mesh_client import MeshClient
+from chatixia.core.mesh_client import MeshClient
 
 logger = logging.getLogger("chatixia.runner")
 

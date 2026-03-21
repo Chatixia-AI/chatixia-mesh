@@ -181,7 +181,7 @@
 
 **Context:** Creating a new agent required manually copying `agent.yaml.example`, editing `.env`, and running `python run_agent.py`. There was no standard onboarding path for external users — they had to understand the monorepo internals, env vars, and sidecar setup before they could run anything.
 
-**Decision:** Add a `chatixia` CLI (PyPI package) to the `agent/` directory with four subcommands: `init` (scaffold agent.yaml + .env.example + .gitignore), `run` (register + connect to mesh + heartbeat), `validate` (check manifest), and `pair` (redeem invite code via pairing API). The package ships `chatixia`, `core`, and `skills` as top-level Python packages. Entry point: `chatixia.cli:main`.
+**Decision:** Add a `chatixia` CLI (PyPI package) to the `agent/` directory with four subcommands: `init` (scaffold agent.yaml + .env.example + .gitignore), `run` (register + connect to mesh + heartbeat), `validate` (check manifest), and `pair` (redeem invite code via pairing API). Entry point: `chatixia.cli:main`.
 
 **Consequences:**
 
@@ -190,7 +190,8 @@
 - (+) `chatixia run` replaces `run_agent.py` with config-driven startup from `agent.yaml`
 - (+) `chatixia validate` catches config errors before runtime
 - (-) Package name `chatixia` on PyPI supersedes the old `chatixia-agent` SDK repo (now deprecated)
-- (-) `core` and `skills` are top-level packages — could collide in large virtualenvs (acceptable for now)
+
+**Update (ADR-012):** `core` and `skills` moved under the `chatixia` namespace — no longer top-level packages.
 
 ---
 
@@ -213,3 +214,22 @@
 - (-) No search, no multi-page navigation, no versioning (acceptable for current scale)
 
 **Migration path:** If the site grows beyond a single page, consider adopting a static site generator (e.g., Astro or VitePress) that can consume the existing `docs/*.md` files as content sources.
+
+---
+
+## ADR-012: Consolidate Package Under `chatixia` Namespace
+
+**Date:** 2026-03-21
+**Status:** Accepted
+
+**Context:** The `chatixia` PyPI package (ADR-010) shipped `core` and `skills` as top-level Python packages. These generic names would collide with any other installed package that also provides a `core` or `skills` module — a significant risk for users installing into shared virtualenvs.
+
+**Decision:** Move `core/` → `chatixia/core/` and `skills/` → `chatixia/skills/`, making everything a subpackage of `chatixia`. The wheel now contains a single top-level package. All internal imports updated from `from core.…` to `from chatixia.core.…`. Published as `chatixia 0.2.0` to PyPI.
+
+**Consequences:**
+
+- (+) No namespace collisions — `chatixia` is the only top-level package
+- (+) Standard Python packaging practice — single namespace for the project
+- (+) `pip install chatixia` is safe in any environment
+- (-) Breaking change for anyone importing `from core.mesh_client import MeshClient` directly (unlikely — only `0.1.0` was published, and it used a different internal layout from the old `chatixia-agent` repo)
+

@@ -9,7 +9,7 @@ load_dotenv()
 
 import requests
 
-from core.mesh_client import MeshClient
+from chatixia.core.mesh_client import MeshClient
 
 REGISTRY = os.environ.get("REGISTRY_URL", "http://localhost:8080")
 API_KEY = os.environ.get("API_KEY", "ak_dev_001")

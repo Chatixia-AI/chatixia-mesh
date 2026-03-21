@@ -1,6 +1,6 @@
 """Mesh send skill handler — direct P2P messaging."""
 
-from core.mesh_skills import handle_mesh_send
+from chatixia.core.mesh_skills import handle_mesh_send
 
 
 def handle(**kwargs) -> str:
