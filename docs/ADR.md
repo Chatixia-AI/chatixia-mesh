@@ -233,3 +233,28 @@
 - (+) `pip install chatixia` is safe in any environment
 - (-) Breaking change for anyone importing `from core.mesh_client import MeshClient` directly (unlikely — only `0.1.0` was published, and it used a different internal layout from the old `chatixia-agent` repo)
 
+---
+
+## ADR-013: Heartbeat-Driven Task Execution
+
+**Date:** 2026-03-21
+**Status:** Accepted
+
+**Context:** The registry assigns pending tasks to agents via the heartbeat response (`pending_tasks` array in the JSON body of `POST /api/hub/heartbeat`). However, the Python runner's heartbeat loop (`runner.py`) discards the response — it fires `requests.post(…)` and ignores the result. Tasks transition from `pending` → `assigned` server-side but are never executed. During E2E testing (Session 4), task completion had to be simulated via direct API calls.
+
+**Decision:** Modify the runner's heartbeat loop to:
+
+1. Parse `pending_tasks` from the heartbeat response
+2. For each task, look up the matching built-in skill handler
+3. Execute the handler (passing `task.payload` as parameters)
+4. POST the result (or error) back to `POST /api/hub/tasks/{task_id}` with state `completed` or `failed`
+
+Task execution runs inline in the heartbeat loop for simplicity. Long-running tasks can be moved to `asyncio.create_task` in a future iteration if needed.
+
+**Consequences:**
+
+- (+) Agents actually execute delegated tasks — closes the last gap in the task lifecycle
+- (+) No new infrastructure — reuses existing heartbeat polling and hub task API
+- (+) Simple implementation — skill handlers are already synchronous functions
+- (-) Heartbeat interval (~15s) bounds task pickup latency
+- (-) Inline execution blocks the heartbeat loop during skill execution — acceptable for fast skills, needs async dispatch for slow ones

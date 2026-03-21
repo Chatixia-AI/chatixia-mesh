@@ -166,7 +166,7 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 | Command | Description |
 |---------|-------------|
 | `chatixia init [name]` | Scaffold a new agent (`agent.yaml`, `.env.example`, `.gitignore`) |
-| `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat |
+| `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat, execute tasks |
 | `chatixia validate [manifest]` | Validate manifest and print summary |
 | `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
 | `chatixia -V` | Show version |
@@ -179,7 +179,7 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 | `chatixia/cli.py` | CLI entry point, argument parsing, subcommand dispatch |
 | `chatixia/scaffold.py` | `chatixia init` — writes `agent.yaml`, `.env.example`, `.gitignore` templates |
 | `chatixia/config.py` | `AgentConfig` dataclass, YAML manifest parser (`load_config`) |
-| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats |
+| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats, executes assigned tasks |
 
 ### Core Modules
 
@@ -199,6 +199,7 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 | `SidecarConfig` | `chatixia.config` | Dataclass: `binary`, `api_key`, `socket` |
 | `MeshMessage` | `chatixia.core.mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
 | `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response |
+| `SKILL_HANDLERS` | `chatixia.runner` | Dict mapping skill name → handler function; used by heartbeat task execution |
 
 ### Skills
 
