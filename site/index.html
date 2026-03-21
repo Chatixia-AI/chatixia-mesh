@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chatixia Mesh — Documentation</title>
+  <meta name="description" content="Agent-to-agent mesh network with WebRTC DataChannels. Peer-to-peer AI agent communication framework." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+
+    /* ── Atmospheric Luminescence Tokens ── */
+    :root {
+      --surface: #f5f7f9;
+      --surface-container-low: #eef1f3;
+      --surface-container: #e5e9eb;
+      --surface-container-lowest: #ffffff;
+
+      --primary: #00647b;
+      --primary-container: #00cffc;
+      --on-primary: #ffffff;
+      --on-surface: #2c2f31;
+      --on-surface-muted: #5f6368;
+
+      --outline-variant: rgba(171,173,175,0.15);
+
+      --error: #fb5151;
+      --active: #16a34a;
+      --stale: #d97706;
+      --info: #0284c7;
+
+      --gradient-primary: linear-gradient(135deg, #00647b, #00cffc);
+      --gradient-primary-subtle: linear-gradient(135deg, rgba(0,100,123,0.06), rgba(0,207,252,0.08));
+
+      --font-display: 'Space Grotesk', sans-serif;
+      --font-body: 'Manrope', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 0.75rem;
+      --radius-md: 1.5rem;
+      --radius-lg: 2rem;
+      --radius-xl: 3rem;
+
+      --shadow-ambient: 0 8px 40px rgba(44,47,49,0.06);
+      --shadow-float: 0 12px 64px rgba(44,47,49,0.08);
+      --shadow-primary-glow: 0 8px 32px rgba(0,207,252,0.18);
+    }
+
+    body {
+      background: var(--surface);
+      color: var(--on-surface);
+      font-family: var(--font-body);
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+
+    /* ── Glass Header ── */
+    .glass-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.4rem 4rem;
+      background: rgba(255,255,255,0.60);
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+    }
+    .glass-header .logo {
+      background: var(--gradient-primary);
+      color: var(--on-primary);
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .glass-header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      font-family: var(--font-display);
+      letter-spacing: -0.02em;
+    }
+    .glass-header h1 .muted {
+      color: var(--on-surface-muted);
+      font-weight: 400;
+    }
+    .glass-header nav {
+      margin-left: auto;
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+    .glass-header nav a {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--on-surface-muted);
+      text-decoration: none;
+      font-family: var(--font-display);
+      letter-spacing: 0.01em;
+      transition: color 0.2s;
+    }
+    .glass-header nav a:hover {
+      color: var(--primary);
+    }
+    .nav-github {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 6rem 4rem 5rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0,207,252,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero h2 {
+      font-family: var(--font-display);
+      font-size: 3.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 1.4rem;
+      position: relative;
+    }
+    .hero h2 .gradient-text {
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--on-surface-muted);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+      position: relative;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      position: relative;
+    }
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: var(--on-primary);
+      border: none;
+      padding: 0.85rem 2rem;
+      border-radius: var(--radius-md);
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: box-shadow 0.3s, transform 0.2s;
+    }
+    .btn-primary:hover {
+      box-shadow: var(--shadow-primary-glow);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.50);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      color: var(--primary);
+      border: 1px solid var(--outline-variant);
+      padding: 0.85rem 2rem;
+      border-radius: var(--radius-md);
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.80);
+      transform: translateY(-1px);
+    }
+
+    /* ── Section ── */
+    .section {
+      padding: 4rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      font-family: var(--font-display);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--on-surface-muted);
+      margin-bottom: 0.5rem;
+    }
+    .section h3 {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+    }
+    .section-desc {
+      color: var(--on-surface-muted);
+      max-width: 640px;
+      margin-bottom: 2.5rem;
+      font-size: 1.05rem;
+    }
+
+    /* ── Glass Card ── */
+    .glass-card {
+      background: rgba(255,255,255,0.80);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--outline-variant);
+      box-shadow: var(--shadow-ambient);
+      padding: 2rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .glass-card:hover {
+      box-shadow: var(--shadow-float);
+      transform: translateY(-2px);
+    }
+    .glass-card h4 {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.75rem;
+    }
+    .glass-card p {
+      color: var(--on-surface-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    /* ── Architecture Diagram ── */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.4rem;
+    }
+    .arch-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--on-primary);
+    }
+    .arch-card-icon.registry { background: var(--gradient-primary); }
+    .arch-card-icon.sidecar { background: linear-gradient(135deg, #4a5568, #718096); }
+    .arch-card-icon.agent { background: linear-gradient(135deg, #065f46, #10b981); }
+    .arch-card-icon.hub { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+
+    .arch-card .tech-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--on-surface-muted);
+      background: var(--surface-container-low);
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      margin-top: 0.75rem;
+    }
+
+    /* ── Quickstart ── */
+    .quickstart-bg {
+      background: var(--surface-container-low);
+      padding: 4rem 0;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.4rem;
+    }
+    .step-number {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--gradient-primary);
+      color: var(--on-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Code Blocks ── */
+    pre {
+      background: var(--on-surface);
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      padding: 1.4rem;
+      border-radius: var(--radius-md);
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+    pre .comment { color: #718096; }
+    pre .cmd { color: #00cffc; }
+
+    /* ── Protocol Layers ── */
+    .layers {
+      display: grid;
+      gap: 1.4rem;
+    }
+    .layer-card {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 1.4rem;
+      align-items: start;
+    }
+    .layer-badge {
+      width: 80px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.7rem;
+      color: var(--on-primary);
+      flex-shrink: 0;
+    }
+    .layer-badge.l1 { background: var(--gradient-primary); }
+    .layer-badge.l2 { background: linear-gradient(135deg, #065f46, #10b981); }
+    .layer-badge.l3 { background: linear-gradient(135deg, #4a5568, #718096); }
+    .layer-badge.l4 { background: linear-gradient(135deg, #7c3aed, #a78bfa); }
+
+    /* ── API Reference ── */
+    .api-group {
+      margin-bottom: 2rem;
+    }
+    .api-group-title {
+      font-family: var(--font-display);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--on-surface-muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+    }
+    .api-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.8rem 0;
+      transition: background 0.15s;
+    }
+    .api-row + .api-row {
+      border-top: 1px solid var(--outline-variant);
+    }
+    .method-badge {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.65rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.4rem;
+      min-width: 48px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .method-badge.get { background: rgba(2,132,199,0.12); color: var(--info); }
+    .method-badge.post { background: rgba(22,163,74,0.12); color: var(--active); }
+    .method-badge.delete { background: rgba(251,81,81,0.10); color: var(--error); }
+    .api-path {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--on-surface);
+      flex-shrink: 0;
+    }
+    .api-desc {
+      color: var(--on-surface-muted);
+      font-size: 0.82rem;
+      margin-left: auto;
+    }
+
+    /* ── Glossary Table ── */
+    .glossary-grid {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 0;
+    }
+    .glossary-term, .glossary-def {
+      padding: 1rem 0;
+    }
+    .glossary-term {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .glossary-def {
+      color: var(--on-surface-muted);
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .glossary-term {
+      border-bottom: 1px solid var(--outline-variant);
+    }
+
+    /* ── Security ── */
+    .threat-card {
+      padding: 1.6rem 2rem;
+    }
+    .threat-id {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.7rem;
+      color: var(--on-surface-muted);
+      margin-bottom: 0.3rem;
+    }
+    .threat-card h4 {
+      margin-bottom: 0.5rem;
+    }
+    .mitigation-list {
+      list-style: none;
+      padding: 0;
+      margin-top: 0.75rem;
+    }
+    .mitigation-list li {
+      position: relative;
+      padding-left: 1.2rem;
+      font-size: 0.85rem;
+      color: var(--on-surface-muted);
+      line-height: 1.8;
+    }
+    .mitigation-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.65rem;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--active);
+    }
+
+    /* ── ADR ── */
+    .adr-timeline {
+      position: relative;
+      padding-left: 2rem;
+    }
+    .adr-timeline::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--gradient-primary);
+      border-radius: 2px;
+    }
+    .adr-entry {
+      position: relative;
+      margin-bottom: 2rem;
+      padding-left: 1.4rem;
+    }
+    .adr-entry::before {
+      content: '';
+      position: absolute;
+      left: -2.35rem;
+      top: 0.45rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--surface);
+    }
+    .adr-number {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.2rem;
+    }
+    .adr-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+    .adr-desc {
+      font-size: 0.88rem;
+      color: var(--on-surface-muted);
+      line-height: 1.6;
+    }
+    .adr-status {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--active);
+      background: rgba(22,163,74,0.10);
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      padding: 4rem;
+      color: var(--on-surface-muted);
+      font-size: 0.82rem;
+    }
+    .footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    /* ── Responsive ── */
+    @media (max-width: 960px) {
+      .glass-header { padding: 1rem 1.5rem; }
+      .glass-header nav { gap: 1rem; }
+      .hero { padding: 4rem 1.5rem 3rem; }
+      .hero h2 { font-size: 2.2rem; }
+      .section { padding: 3rem 1.5rem; }
+      .arch-grid { grid-template-columns: repeat(2, 1fr); }
+      .steps { grid-template-columns: 1fr; }
+      .layer-card { grid-template-columns: 1fr; }
+      .layer-badge { width: auto; padding: 0 1rem; }
+      .api-row { flex-wrap: wrap; }
+      .api-desc { margin-left: 0; }
+      .quickstart-bg { padding: 3rem 0; }
+    }
+    @media (max-width: 600px) {
+      .glass-header nav { display: none; }
+      .arch-grid { grid-template-columns: 1fr; }
+      .hero h2 { font-size: 1.8rem; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .glossary-grid { grid-template-columns: 1fr; }
+      .glossary-term { border-bottom: none; padding-bottom: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════ Header ════════ -->
+<header class="glass-header">
+  <div class="logo">&gt;_</div>
+  <h1>chatixia <span class="muted">//</span> <span class="muted">docs</span></h1>
+  <nav>
+    <a href="#architecture">Architecture</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#protocol">Protocol</a>
+    <a href="#api">API</a>
+    <a href="#security">Security</a>
+    <a href="#glossary">Glossary</a>
+    <a href="#decisions">ADRs</a>
+    <a href="https://github.com/Chatixia-AI/chatixia-mesh" class="nav-github">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </nav>
+</header>
+
+<!-- ════════ Hero ════════ -->
+<section class="hero">
+  <h2>
+    Agent-to-Agent<br/>
+    <span class="gradient-text">Mesh Network</span>
+  </h2>
+  <p>Peer-to-peer AI agent communication over WebRTC DataChannels. Direct, encrypted, decentralized.</p>
+  <div class="hero-actions">
+    <a href="#quickstart" class="btn-primary">Get Started</a>
+    <a href="#architecture" class="btn-secondary">Architecture</a>
+  </div>
+</section>
+
+<!-- ════════ Architecture ════════ -->
+<section id="architecture" class="section">
+  <div class="section-label">Architecture</div>
+  <h3>Four Components, One Mesh</h3>
+  <p class="section-desc">A central registry handles signaling and discovery. Agent-to-agent data flows directly over DTLS-encrypted WebRTC DataChannels — the registry is never in the data path.</p>
+
+  <div class="arch-grid">
+    <div class="glass-card arch-card">
+      <div class="arch-card-icon registry">R</div>
+      <h4>Registry</h4>
+      <p>Signaling server, agent registry, task queue, and hub API. The control plane for the mesh.</p>
+      <span class="tech-badge">Rust · axum · port 8080</span>
+    </div>
+    <div class="glass-card arch-card">
+      <div class="arch-card-icon sidecar">S</div>
+      <h4>Sidecar</h4>
+      <p>WebRTC mesh peer and IPC bridge. One per agent. Handles all signaling and DataChannel complexity.</p>
+      <span class="tech-badge">Rust · webrtc-rs</span>
+    </div>
+    <div class="glass-card arch-card">
+      <div class="arch-card-icon agent">A</div>
+      <h4>Agent</h4>
+      <p>AI agent framework with skills, LLM integration, and mesh networking. Ships as the <code>chatixia</code> CLI.</p>
+      <span class="tech-badge">Python · PyPI</span>
+    </div>
+    <div class="glass-card arch-card">
+      <div class="arch-card-icon hub">H</div>
+      <h4>Hub</h4>
+      <p>Real-time monitoring dashboard. Glassmorphic UI for agent health, tasks, topology, and approvals.</p>
+      <span class="tech-badge">React · Vite · TypeScript</span>
+    </div>
+  </div>
+
+  <!-- ASCII Diagram -->
+  <div class="glass-card" style="margin-top: 2rem;">
+    <pre style="background: transparent; color: var(--on-surface); padding: 1rem 0; margin: 0;">
+<span class="comment">                    ┌──────────────────────────────────────────┐</span>
+<span class="comment">                    │         Registry Server (Rust)            │</span>
+<span class="comment">                    │  Signaling │ Agent Registry │ Hub API     │</span>
+<span class="comment">                    └─────┬──────┴───────────────┴──────┬───────┘</span>
+<span class="comment">                          │ WebSocket (SDP/ICE)        │ HTTP</span>
+<span class="comment">                   ┌──────┴──────┐              ┌──────┴──────┐</span>
+<span class="comment">                   │  Sidecar A  │◄── WebRTC ──►│  Sidecar B  │</span>
+<span class="comment">                   │   (Rust)    │  DataChannel  │   (Rust)    │</span>
+<span class="comment">                   └──────┬──────┘  DTLS encrypt └──────┬──────┘</span>
+<span class="comment">                          │ IPC (Unix socket)          │ IPC</span>
+<span class="comment">                   ┌──────┴──────┐              ┌──────┴──────┐</span>
+<span class="comment">                   │  Agent A    │              │  Agent B    │</span>
+<span class="comment">                   │  (Python)   │              │  (Python)   │</span>
+<span class="comment">                   └─────────────┘              └─────────────┘</span></pre>
+  </div>
+</section>
+
+<!-- ════════ Quickstart ════════ -->
+<div class="quickstart-bg" id="quickstart">
+  <section class="section">
+    <div class="section-label">Quickstart</div>
+    <h3>Up and Running in Three Steps</h3>
+    <p class="section-desc">Build the Rust components, scaffold an agent, and connect to the mesh.</p>
+
+    <div class="steps">
+      <div class="glass-card">
+        <div class="step-number">1</div>
+        <h4>Build &amp; Start Registry</h4>
+        <p>Compile the Rust workspace and launch the signaling server.</p>
+        <pre><span class="comment"># Build all Rust crates</span>
+<span class="cmd">cargo build --release</span>
+
+<span class="comment"># Start registry on port 8080</span>
+<span class="cmd">cargo run --release -p chatixia-registry</span></pre>
+      </div>
+      <div class="glass-card">
+        <div class="step-number">2</div>
+        <h4>Scaffold &amp; Configure Agent</h4>
+        <p>Install the CLI, scaffold a new agent, and fill in credentials.</p>
+        <pre><span class="comment"># Install the chatixia CLI</span>
+<span class="cmd">cd agent && pip install -e .</span>
+
+<span class="comment"># Scaffold a new agent</span>
+<span class="cmd">chatixia init my-agent</span>
+<span class="cmd">cd my-agent</span>
+<span class="cmd">cp .env.example .env</span></pre>
+      </div>
+      <div class="glass-card">
+        <div class="step-number">3</div>
+        <h4>Pair &amp; Run</h4>
+        <p>Redeem an invite code from an admin, then start the agent.</p>
+        <pre><span class="comment"># Pair with the mesh</span>
+<span class="cmd">chatixia pair &lt;invite-code&gt;</span>
+
+<span class="comment"># Run the agent</span>
+<span class="cmd">chatixia run</span>
+
+<span class="comment"># Hub dashboard (separate terminal)</span>
+<span class="cmd">cd hub && npm run dev</span></pre>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ════════ Protocol ════════ -->
+<section id="protocol" class="section">
+  <div class="section-label">Protocol</div>
+  <h3>Communication Layers</h3>
+  <p class="section-desc">Four distinct communication layers, each with a specific responsibility and transport.</p>
+
+  <div class="layers">
+    <div class="glass-card layer-card">
+      <div class="layer-badge l1">L1</div>
+      <div>
+        <h4>Signaling — WebSocket + JWT</h4>
+        <p>SDP offers/answers and ICE candidates relayed through the registry. JWT authentication with 5-minute expiry. Sender verification ensures JWT <code>sub</code> matches message <code>peer_id</code>.</p>
+      </div>
+    </div>
+    <div class="glass-card layer-card">
+      <div class="layer-badge l2">L2</div>
+      <div>
+        <h4>DataChannel — WebRTC P2P</h4>
+        <p>Direct sidecar-to-sidecar, DTLS encrypted. Application protocol: <code>MeshMessage</code> JSON with types for task delegation, skill discovery, status broadcast, and ping/pong.</p>
+      </div>
+    </div>
+    <div class="glass-card layer-card">
+      <div class="layer-badge l3">L3</div>
+      <div>
+        <h4>IPC — Unix Socket, JSON Lines</h4>
+        <p>Sidecar ↔ Python agent bridge. Commands: <code>send</code>, <code>broadcast</code>, <code>list_peers</code>, <code>connect</code>. Events: <code>message</code>, <code>peer_connected</code>, <code>peer_disconnected</code>.</p>
+      </div>
+    </div>
+    <div class="glass-card layer-card">
+      <div class="layer-badge l4">L4</div>
+      <div>
+        <h4>Registry REST API — HTTP</h4>
+        <p>Agent registration and discovery, task queue management, mesh topology for dashboard visualization, and ICE server configuration (STUN + optional TURN).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ API Reference ════════ -->
+<section id="api" class="section">
+  <div class="section-label">API Reference</div>
+  <h3>Registry Endpoints</h3>
+  <p class="section-desc">All REST endpoints served by the registry on port 8080.</p>
+
+  <div class="glass-card">
+    <div class="api-group">
+      <div class="api-group-title">Authentication</div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/token</span>
+        <span class="api-desc">Exchange API key for JWT</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/ws?token=...</span>
+        <span class="api-desc">WebSocket upgrade (signaling)</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/config</span>
+        <span class="api-desc">ICE server config (STUN + TURN)</span>
+      </div>
+    </div>
+
+    <div class="api-group">
+      <div class="api-group-title">Agent Registry</div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/registry/agents</span>
+        <span class="api-desc">List all agents</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/registry/agents</span>
+        <span class="api-desc">Register or update agent</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/registry/agents/{id}</span>
+        <span class="api-desc">Get specific agent</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge delete">DELETE</span>
+        <span class="api-path">/api/registry/agents/{id}</span>
+        <span class="api-desc">Unregister agent</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/registry/route?skill=...</span>
+        <span class="api-desc">Find agent by skill</span>
+      </div>
+    </div>
+
+    <div class="api-group">
+      <div class="api-group-title">Task Queue</div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/hub/tasks</span>
+        <span class="api-desc">Submit task</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/hub/tasks/all</span>
+        <span class="api-desc">List all tasks</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/hub/tasks/{id}</span>
+        <span class="api-desc">Get task status</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/hub/tasks/{id}</span>
+        <span class="api-desc">Update task result</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/hub/heartbeat</span>
+        <span class="api-desc">Agent heartbeat (upsert record)</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/hub/network/topology</span>
+        <span class="api-desc">Mesh topology for visualization</span>
+      </div>
+    </div>
+
+    <div class="api-group" style="margin-bottom: 0;">
+      <div class="api-group-title">Agent Pairing</div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/pairing/generate-code</span>
+        <span class="api-desc">Generate 6-digit invite code</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/pairing/pair</span>
+        <span class="api-desc">Redeem code, create pending entry</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/pairing/pending</span>
+        <span class="api-desc">List pending approvals</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/pairing/all</span>
+        <span class="api-desc">List all onboarding entries</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/pairing/{id}/approve</span>
+        <span class="api-desc">Approve pending agent</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/pairing/{id}/reject</span>
+        <span class="api-desc">Reject pending agent</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge post">POST</span>
+        <span class="api-path">/api/pairing/{id}/revoke</span>
+        <span class="api-desc">Revoke approved agent</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ CLI ════════ -->
+<section id="cli" class="section">
+  <div class="section-label">CLI</div>
+  <h3>chatixia Command Reference</h3>
+  <p class="section-desc">The <code>chatixia</code> CLI manages the agent lifecycle — from scaffolding to mesh participation.</p>
+
+  <div class="arch-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="glass-card">
+      <h4><code>chatixia init [name]</code></h4>
+      <p>Scaffold a new agent directory with <code>agent.yaml</code>, <code>.env.example</code>, and <code>.gitignore</code> templates.</p>
+    </div>
+    <div class="glass-card">
+      <h4><code>chatixia run [manifest]</code></h4>
+      <p>Register with registry, spawn sidecar, connect to mesh, and begin heartbeat loop.</p>
+    </div>
+    <div class="glass-card">
+      <h4><code>chatixia pair &lt;code&gt;</code></h4>
+      <p>Redeem a 6-digit invite code to join a mesh network. Creates a pending approval entry.</p>
+    </div>
+    <div class="glass-card">
+      <h4><code>chatixia validate [manifest]</code></h4>
+      <p>Validate the agent manifest (<code>agent.yaml</code>) and print a summary of the configuration.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ Skills ════════ -->
+<section id="skills" class="section">
+  <div class="section-label">Agent Skills</div>
+  <h3>Built-in Mesh Skills</h3>
+  <p class="section-desc">Skills available to every agent for inter-agent communication and task delegation.</p>
+
+  <div class="glass-card">
+    <div class="glossary-grid" style="grid-template-columns: 140px 1fr;">
+      <div class="glossary-term"><code>delegate</code></div>
+      <div class="glossary-def">Submit a task to the hub queue, optionally route by skill, and poll for the result.</div>
+      <div class="glossary-term"><code>list_agents</code></div>
+      <div class="glossary-def">List all registered agents via the registry REST API.</div>
+      <div class="glossary-term"><code>mesh_send</code></div>
+      <div class="glossary-def">Send a direct message to a specific agent via the hub task queue.</div>
+      <div class="glossary-term"><code>mesh_broadcast</code></div>
+      <div class="glossary-def">Broadcast a message to all active agents via the hub task queue.</div>
+      <div class="glossary-term"><code>find_agent</code></div>
+      <div class="glossary-def">Find the best agent for a given skill via the registry route endpoint.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ Security ════════ -->
+<div class="quickstart-bg" id="security">
+  <section class="section">
+    <div class="section-label">Security</div>
+    <h3>Threat Model</h3>
+    <p class="section-desc">Key threats, existing mitigations, and residual risks for the mesh network.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.4rem;">
+      <div class="glass-card threat-card">
+        <div class="threat-id">T1</div>
+        <h4>Unauthorized Signaling Access</h4>
+        <p>Attacker connects to WebSocket and injects SDP/ICE messages.</p>
+        <ul class="mitigation-list">
+          <li>JWT required for WebSocket upgrade</li>
+          <li>Sender verification: JWT sub must match peer_id</li>
+        </ul>
+      </div>
+      <div class="glass-card threat-card">
+        <div class="threat-id">T2</div>
+        <h4>API Key Compromise</h4>
+        <p>Leaked key allows attacker to obtain JWT and impersonate a peer.</p>
+        <ul class="mitigation-list">
+          <li>Keys map to specific peer_id + role</li>
+          <li>JWT TTL is 5 minutes</li>
+        </ul>
+      </div>
+      <div class="glass-card threat-card">
+        <div class="threat-id">T3</div>
+        <h4>Man-in-the-Middle</h4>
+        <p>Intercept or modify agent-to-agent P2P traffic.</p>
+        <ul class="mitigation-list">
+          <li>DataChannels are DTLS-encrypted by default</li>
+          <li>Fingerprints exchanged via signaling</li>
+        </ul>
+      </div>
+      <div class="glass-card threat-card">
+        <div class="threat-id">T5</div>
+        <h4>Task Queue Poisoning</h4>
+        <p>Submit malicious tasks to execute harmful skills on target agents.</p>
+        <ul class="mitigation-list">
+          <li>Skill-matching assignment only</li>
+          <li>TTL limits task lifetime (300s default)</li>
+        </ul>
+      </div>
+      <div class="glass-card threat-card">
+        <div class="threat-id">T6</div>
+        <h4>IPC Socket Hijacking</h4>
+        <p>Local process connects to Unix socket and impersonates the agent.</p>
+        <ul class="mitigation-list">
+          <li>Filesystem permissions (owner-only)</li>
+          <li>First-client-wins connection model</li>
+        </ul>
+      </div>
+      <div class="glass-card threat-card">
+        <div class="threat-id">T8</div>
+        <h4>Pairing Code Brute Force</h4>
+        <p>Brute-force 6-digit codes to join without authorization.</p>
+        <ul class="mitigation-list">
+          <li>Rate limit: 5 attempts per IP per 60s</li>
+          <li>Codes are single-use, expire in 5 min</li>
+          <li>Redemption requires admin approval</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ════════ Glossary ════════ -->
+<section id="glossary" class="section">
+  <div class="section-label">Glossary</div>
+  <h3>Key Terms</h3>
+  <p class="section-desc">Domain-specific terminology used throughout the system.</p>
+
+  <div class="glass-card">
+    <div class="glossary-grid">
+      <div class="glossary-term">Agent</div>
+      <div class="glossary-def">A Python AI process with skills, LLM integration, and mesh networking. Each agent has one sidecar.</div>
+      <div class="glossary-term">Sidecar</div>
+      <div class="glossary-def">A Rust process handling WebRTC signaling and DataChannels on behalf of a Python agent, via IPC.</div>
+      <div class="glossary-term">Registry</div>
+      <div class="glossary-def">Central Rust server providing signaling relay, agent discovery, task queue, and hub API.</div>
+      <div class="glossary-term">Mesh</div>
+      <div class="glossary-def">The network of WebRTC DataChannel connections between sidecars. Full mesh = every sidecar connected to every other.</div>
+      <div class="glossary-term">DataChannel</div>
+      <div class="glossary-def">WebRTC primitive for arbitrary data transfer. DTLS-encrypted, P2P. Carries MeshMessage JSON.</div>
+      <div class="glossary-term">MeshMessage</div>
+      <div class="glossary-def">Application-level JSON message: type, request_id, source_agent, target_agent, payload.</div>
+      <div class="glossary-term">Skill</div>
+      <div class="glossary-def">A named capability (Python function) that an agent can execute. Used for task routing.</div>
+      <div class="glossary-term">Task</div>
+      <div class="glossary-def">A unit of work in the hub queue. Lifecycle: pending → assigned → completed/failed.</div>
+      <div class="glossary-term">Heartbeat</div>
+      <div class="glossary-def">Periodic HTTP POST from agent to registry (~15s). Updates metadata and picks up pending tasks.</div>
+      <div class="glossary-term">Peer ID</div>
+      <div class="glossary-def">Unique identifier for a sidecar, derived from its API key entry.</div>
+      <div class="glossary-term">JWT</div>
+      <div class="glossary-def">JSON Web Token — short-lived (5 min) bearer token for WebSocket auth and sender verification.</div>
+      <div class="glossary-term">IPC</div>
+      <div class="glossary-def">JSON-line protocol over Unix domain socket between a sidecar and its Python agent.</div>
+      <div class="glossary-term">STUN</div>
+      <div class="glossary-def">Session Traversal Utilities for NAT — helps peers discover their public IP for connectivity.</div>
+      <div class="glossary-term">TURN</div>
+      <div class="glossary-def">Traversal Using Relays around NAT — relay server used when direct and STUN connections fail.</div>
+      <div class="glossary-term">MCP</div>
+      <div class="glossary-def">Model Context Protocol — standard for connecting LLMs to external tools and data sources.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ ADRs ════════ -->
+<section id="decisions" class="section">
+  <div class="section-label">Architecture Decision Records</div>
+  <h3>Design Decisions</h3>
+  <p class="section-desc">Key architectural decisions and their rationale.</p>
+
+  <div class="glass-card">
+    <div class="adr-timeline">
+      <div class="adr-entry">
+        <div class="adr-number">ADR-001 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Rust Sidecar Pattern for WebRTC</div>
+        <div class="adr-desc">Python agents spawn a Rust sidecar for all WebRTC/signaling complexity. Communication via Unix socket IPC. Robust WebRTC via webrtc-rs; agents stay simple with no WebRTC dependencies.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-002 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Full Mesh Topology</div>
+        <div class="adr-desc">Every sidecar connects to every other via WebRTC DataChannels. Direct P2P with lowest latency, no single point of failure for data. Practical limit of ~50 agents.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-003 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">JWT for WebSocket Authentication</div>
+        <div class="adr-desc">API key → JWT exchange. Short-lived tokens (5-min TTL) for stateless verification. Sender verification binds JWT sub to message peer_id.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-004 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">In-Memory State (No Database)</div>
+        <div class="adr-desc">All state in concurrent DashMaps. Zero deployment complexity — single binary, no external services. Migration path: add PostgreSQL when persistence is needed.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-005 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Hub Task Queue for Sync Skill Handlers</div>
+        <div class="adr-desc">Sync Python skill handlers submit tasks via the registry REST API instead of async IPC. Centralized task queue with status tracking.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-006 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Ephemeral TURN Credentials</div>
+        <div class="adr-desc">Coturn use-auth-secret mode with HMAC-SHA1 generated credentials (24h TTL). No long-lived TURN credentials exposed.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-007 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Atmospheric Luminescence UI</div>
+        <div class="adr-desc">visionOS-inspired glassmorphic design system. Tonal surface layering, Space Grotesk + Manrope typography, frosted glass surfaces, Electric Cyan gradient accent.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-009 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">Hybrid Pairing + Approval</div>
+        <div class="adr-desc">Invite codes + admin approval for agent onboarding. Dynamic onboarding without config edits. Scoped visibility and revocation support.</div>
+      </div>
+      <div class="adr-entry">
+        <div class="adr-number">ADR-010 <span class="adr-status">accepted</span></div>
+        <div class="adr-title">chatixia CLI</div>
+        <div class="adr-desc">PyPI package with init, run, validate, and pair subcommands. Standard onboarding path for external users — scaffold, pair, run.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ Footer ════════ -->
+<footer class="footer">
+  <p>chatixia mesh &mdash; <a href="https://github.com/Chatixia-AI/chatixia-mesh">GitHub</a></p>
+</footer>
+
+</body>
+</html>

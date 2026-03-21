@@ -11,7 +11,9 @@ chatixia-mesh/
 ├── agent/              # Python: AI agent framework
 ├── hub/                # React (Vite): monitoring dashboard
 ├── infra/              # Nginx + coturn configs
+├── site/               # GitHub Pages documentation site
 ├── docs/               # Documentation
+├── .github/workflows/  # CI: GitHub Pages deployment
 ├── Cargo.toml          # Workspace manifest (registry + sidecar)
 ├── .env.example        # All environment variables
 └── agent.yaml.example  # Agent configuration template
@@ -333,3 +335,17 @@ Atmospheric Luminescence design system — light-mode glassmorphic. Inline CSS w
 | `Cargo.toml` | Rust workspace: members `registry`, `sidecar` |
 | `hub/package.json` | Hub dependencies: React 19, Vite 6, TypeScript 5.7 |
 | `agent/pyproject.toml` | Agent dependencies: openai, mcp, fastapi, psycopg, structlog, pyyaml |
+
+---
+
+## Documentation Site (`site/`)
+
+Static GitHub Pages documentation site using the Atmospheric Luminescence design system.
+
+| File | Purpose |
+|------|---------|
+| `site/index.html` | Single-page docs — architecture, quickstart, API, protocol, security, glossary, ADRs |
+
+### Deployment
+
+GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` directory to GitHub Pages on push to `main` (when `site/**` files change) or manual dispatch.
