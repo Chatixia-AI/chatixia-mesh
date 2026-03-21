@@ -155,7 +155,29 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 
 ## Python Agent (`agent/`)
 
-AI agent framework with mesh networking.
+AI agent framework with mesh networking. Published as the `chatixia` PyPI package.
+
+### CLI (`chatixia`)
+
+Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
+
+| Command | Description |
+|---------|-------------|
+| `chatixia init [name]` | Scaffold a new agent (`agent.yaml`, `.env.example`, `.gitignore`) |
+| `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat |
+| `chatixia validate [manifest]` | Validate manifest and print summary |
+| `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
+| `chatixia -V` | Show version |
+
+### CLI Modules (`chatixia/`)
+
+| File | Purpose |
+|------|---------|
+| `chatixia/__init__.py` | Package version |
+| `chatixia/cli.py` | CLI entry point, argument parsing, subcommand dispatch |
+| `chatixia/scaffold.py` | `chatixia init` — writes `agent.yaml`, `.env.example`, `.gitignore` templates |
+| `chatixia/config.py` | `AgentConfig` dataclass, YAML manifest parser (`load_config`) |
+| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats |
 
 ### Core Modules
 
@@ -163,15 +185,17 @@ AI agent framework with mesh networking.
 |------|---------|
 | `core/mesh_client.py` | `MeshClient` — async IPC bridge to sidecar, message dispatch, request/response correlation |
 | `core/mesh_skills.py` | Synchronous skill handlers: `delegate`, `list_agents`, `mesh_send`, `mesh_broadcast`, `find_agent` |
-| `run_agent.py` | Standalone agent runner — registers with registry, connects to mesh, heartbeats, clean deregister on shutdown |
+| `run_agent.py` | Legacy standalone agent runner (use `chatixia run` instead) |
 | `.env` | Local env var defaults for agent runner (gitignored) |
 
 ### Key Classes
 
 | Class | Module | Description |
 |-------|--------|-------------|
-| `MeshMessage` | `mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
-| `MeshClient` | `mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response |
+| `AgentConfig` | `chatixia.config` | Dataclass: agent name, registry URL, sidecar config, LLM provider, skills, runtime settings |
+| `SidecarConfig` | `chatixia.config` | Dataclass: `binary`, `api_key`, `socket` |
+| `MeshMessage` | `core.mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
+| `MeshClient` | `core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response |
 
 ### Skills
 

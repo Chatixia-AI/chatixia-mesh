@@ -1,8 +1,21 @@
 [project]
-name = "chatixia-mesh-agent"
-version = "0.1.0"
-description = "Chatixia mesh agent — AI agent with WebRTC P2P networking"
+name = "chatixia"
+version = "0.2.0"
+description = "Deploy and run AI agents on the Chatixia mesh network"
+# readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+keywords = ["ai", "agent", "llm", "mesh", "webrtc", "p2p"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     # LLM
@@ -26,8 +39,22 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.15.0",
+]
+
+[project.scripts]
+chatixia = "chatixia.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Chatixia-AI/chatixia-mesh"
+Repository = "https://github.com/Chatixia-AI/chatixia-mesh"
+Issues = "https://github.com/Chatixia-AI/chatixia-mesh/issues"
+
 [tool.hatch.build.targets.wheel]
-packages = ["core", "skills"]
+packages = ["chatixia", "core", "skills"]
 
 [build-system]
 requires = ["hatchling"]

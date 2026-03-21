@@ -6,7 +6,7 @@ Agent-to-agent mesh network with WebRTC DataChannels.
 
 - **registry/** — Rust (axum): signaling server + agent registry + hub API (port 8080)
 - **sidecar/** — Rust (webrtc-rs): WebRTC mesh peer + IPC bridge to Python agent
-- **agent/** — Python: AI agent framework (skills, MCP, autonomous goals, knowledge)
+- **agent/** — Python (`chatixia` PyPI package): AI agent framework + CLI (skills, mesh client, scaffolding)
 - **hub/** — React (Vite): monitoring dashboard
 
 ## Build
@@ -28,9 +28,12 @@ cd agent && pip install -e .
 # 1. Start registry
 cargo run --release -p chatixia-registry
 
-# 2. Start an agent with sidecar
-# The agent spawns the sidecar automatically
-cd agent && python -m core.runner --config ../agent.yaml.example
+# 2. Scaffold and run a new agent
+chatixia init my-agent
+cd my-agent
+cp .env.example .env          # fill in credentials
+chatixia pair <invite-code>   # get code from admin
+chatixia run
 
 # 3. Hub dashboard (dev)
 cd hub && npm run dev
@@ -42,6 +45,7 @@ cd hub && npm run dev
 | ----------------- | --------------------------- |
 | Registry          | `registry/src/main.rs`      |
 | Sidecar           | `sidecar/src/main.rs`       |
+| CLI               | `agent/chatixia/cli.py`     |
 | Agent mesh client | `agent/core/mesh_client.py` |
 | Mesh skills       | `agent/core/mesh_skills.py` |
 | Hub dashboard     | `hub/src/App.tsx`           |

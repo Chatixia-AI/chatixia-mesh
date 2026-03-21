@@ -171,3 +171,23 @@
 - (-) In-memory state — pairing data lost on registry restart (matches existing pattern)
 - (-) No push notification on approval — agent must poll `/api/token`
 - (-) Dashboard admin endpoints are unauthenticated (matches existing hub API pattern)
+
+---
+
+## ADR-010: `chatixia` CLI for Agent Scaffolding and Lifecycle
+
+**Date:** 2026-03-21
+**Status:** Accepted
+
+**Context:** Creating a new agent required manually copying `agent.yaml.example`, editing `.env`, and running `python run_agent.py`. There was no standard onboarding path for external users — they had to understand the monorepo internals, env vars, and sidecar setup before they could run anything.
+
+**Decision:** Add a `chatixia` CLI (PyPI package) to the `agent/` directory with four subcommands: `init` (scaffold agent.yaml + .env.example + .gitignore), `run` (register + connect to mesh + heartbeat), `validate` (check manifest), and `pair` (redeem invite code via pairing API). The package ships `chatixia`, `core`, and `skills` as top-level Python packages. Entry point: `chatixia.cli:main`.
+
+**Consequences:**
+
+- (+) Users scaffold a new agent with one command: `chatixia init my-agent`
+- (+) `chatixia pair <code>` integrates with ADR-009 pairing flow — no manual API calls
+- (+) `chatixia run` replaces `run_agent.py` with config-driven startup from `agent.yaml`
+- (+) `chatixia validate` catches config errors before runtime
+- (-) Package name `chatixia` on PyPI supersedes the old `chatixia-agent` SDK repo (now deprecated)
+- (-) `core` and `skills` are top-level packages — could collide in large virtualenvs (acceptable for now)
