@@ -191,3 +191,25 @@
 - (+) `chatixia validate` catches config errors before runtime
 - (-) Package name `chatixia` on PyPI supersedes the old `chatixia-agent` SDK repo (now deprecated)
 - (-) `core` and `skills` are top-level packages — could collide in large virtualenvs (acceptable for now)
+
+---
+
+## ADR-011: GitHub Pages Documentation Site
+
+**Date:** 2026-03-21
+**Status:** Accepted
+
+**Context:** All project documentation lived in markdown files inside the `docs/` directory — useful for contributors reading the repo, but not discoverable or presentable for external users evaluating the system. A public-facing documentation site was needed without introducing a static site generator (Jekyll, Hugo, Docusaurus) or a separate build pipeline.
+
+**Decision:** Create a single-page static HTML documentation site in `site/index.html` using the existing Atmospheric Luminescence design system (ADR-007). The site is deployed to GitHub Pages via a GitHub Actions workflow (`.github/workflows/pages.yml`) that uploads the `site/` directory directly — no build step required. Content covers architecture, quickstart, protocol layers, API reference, CLI, skills, threat model, glossary, and ADRs.
+
+**Consequences:**
+
+- (+) Zero build dependencies — plain HTML/CSS, no framework, no bundler
+- (+) Design continuity with the hub dashboard (same tokens, fonts, glass effects)
+- (+) GitHub Actions deployment is simple and free
+- (+) Single file is easy to maintain and review in PR diffs
+- (-) Content must be manually kept in sync with the markdown docs in `docs/`
+- (-) No search, no multi-page navigation, no versioning (acceptable for current scale)
+
+**Migration path:** If the site grows beyond a single page, consider adopting a static site generator (e.g., Astro or VitePress) that can consume the existing `docs/*.md` files as content sources.
