@@ -220,6 +220,7 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 | `mesh_send` | `handle_mesh_send()` | Async — P2P `agent_prompt` via DataChannel, with registry task queue fallback |
 | `mesh_broadcast` | `handle_mesh_broadcast()` | Async — P2P broadcast via DataChannel, with registry task queue fallback |
 | `find_agent` | `handle_find_agent()` | Find best agent for a skill via registry route endpoint (sync, control plane) |
+| `user_intervention` | `handle_user_intervention()` | Sync — acknowledge free-form messages from the hub dashboard (submitted via intervene panel) |
 
 ### Skill Definition Format (`chatixia/skills/*/skill.json`)
 

@@ -16,9 +16,10 @@ export function AgentChat({ agentId, onClose }: Props) {
     setStatus('sending...')
     try {
       const result = await submitTask({
+        skill: 'user_intervention',
         target_agent_id: agentId,
         source_agent_id: 'hub-user',
-        payload: { message: message.trim(), type: 'user_intervention' },
+        payload: { message: message.trim() },
       })
       setStatus(`Task submitted: ${result.task_id}`)
       setMessage('')

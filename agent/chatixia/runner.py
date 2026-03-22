@@ -23,6 +23,14 @@ from chatixia.core.mesh_skills import (
 
 logger = logging.getLogger("chatixia.runner")
 
+def handle_user_intervention(message: str = "", **kwargs: Any) -> str:
+    """Handle a user intervention message from the hub dashboard."""
+    if not message:
+        return "Received empty intervention."
+    logger.info("user intervention: %s", message)
+    return f"Received: {message}"
+
+
 # Skill name → handler function (sync or async)
 SKILL_HANDLERS: dict[str, Callable[..., str | Awaitable[str]]] = {
     "list_agents": handle_list_agents,
@@ -30,6 +38,7 @@ SKILL_HANDLERS: dict[str, Callable[..., str | Awaitable[str]]] = {
     "delegate": handle_delegate,
     "mesh_send": handle_mesh_send,
     "mesh_broadcast": handle_mesh_broadcast,
+    "user_intervention": handle_user_intervention,
 }
 
 
@@ -229,23 +238,47 @@ def _register(
     config: AgentConfig,
 ) -> None:
     """Register this agent with the registry HTTP API."""
-    resp = requests.post(
-        f"{registry}/api/registry/agents",
-        json={
-            "agent_id": agent_id,
-            "hostname": socket.gethostname(),
-            "sidecar_peer_id": f"{agent_id}-sidecar",
-            "capabilities": {
-                "skills": config.skills_builtin,
-                "mcp_servers": [],
-                "goals_count": 0,
-                "mode": "interactive",
+    try:
+        resp = requests.post(
+            f"{registry}/api/registry/agents",
+            json={
+                "agent_id": agent_id,
+                "hostname": socket.gethostname(),
+                "sidecar_peer_id": f"{agent_id}-sidecar",
+                "capabilities": {
+                    "skills": config.skills_builtin,
+                    "mcp_servers": [],
+                    "goals_count": 0,
+                    "mode": "interactive",
+                },
             },
-        },
-        headers={"x-api-key": api_key},
-        timeout=10,
-    )
-    resp.raise_for_status()
+            headers={"x-api-key": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except requests.ConnectionError:
+        raise RuntimeError(
+            f"Cannot connect to registry at {registry}\n"
+            "Is the registry running? Start it with:\n"
+            f"  chatixia-registry          # default port 8080\n"
+            f"  PORT=9090 chatixia-registry # custom port"
+        ) from None
+    except requests.Timeout:
+        raise RuntimeError(
+            f"Registry at {registry} is not responding (timed out after 10s).\n"
+            "This usually means something else is using that port.\n"
+            "Check with: lsof -i :{port}\n"
+            "Or try a different port:\n"
+            f"  PORT=9090 chatixia-registry".format(
+                port=registry.rsplit(":", 1)[-1] if ":" in registry.rsplit("/", 1)[-1] else "8080"
+            )
+        ) from None
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        raise RuntimeError(
+            f"Registry rejected registration (HTTP {status}).\n"
+            "Check your API key in agent.yaml (sidecar.api_key) matches api_keys.json on the registry."
+        ) from None
 
 
 async def _shutdown(
