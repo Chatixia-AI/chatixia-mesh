@@ -12,7 +12,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 dotenvy = { workspace = true }
-webrtc = "0.12"
+webrtc = "0.17"
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 reqwest = { version = "0.13", features = ["json"] }
 hmac = "0.12"
