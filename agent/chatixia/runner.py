@@ -7,12 +7,12 @@ import logging
 import os
 import signal
 import socket
-from typing import Callable
+from typing import Any, Awaitable, Callable
 
 import requests
 
 from chatixia.config import AgentConfig
-from chatixia.core.mesh_client import MeshClient
+from chatixia.core.mesh_client import MeshClient, MeshMessage
 from chatixia.core.mesh_skills import (
     handle_delegate,
     handle_find_agent,
@@ -23,8 +23,8 @@ from chatixia.core.mesh_skills import (
 
 logger = logging.getLogger("chatixia.runner")
 
-# Skill name → handler function
-SKILL_HANDLERS: dict[str, Callable[..., str]] = {
+# Skill name → handler function (sync or async)
+SKILL_HANDLERS: dict[str, Callable[..., str | Awaitable[str]]] = {
     "list_agents": handle_list_agents,
     "find_agent": handle_find_agent,
     "delegate": handle_delegate,
@@ -71,12 +71,67 @@ async def run_agent(config: AgentConfig) -> None:
         )
 
     await client.start()
+
+    # Register handler for incoming P2P task requests via DataChannel
+    async def _handle_p2p_message(data: dict[str, Any]) -> None:
+        payload = data.get("payload", {})
+        inner = payload.get("message", {})
+        msg_type = inner.get("type", "")
+
+        if msg_type != "task_request":
+            return  # Not a task request — skip
+
+        source_agent = inner.get("source_agent", "unknown")
+        request_id = inner.get("request_id", "")
+        task_payload = inner.get("payload", {})
+        skill = task_payload.get("skill", "")
+        from_peer = payload.get("from_peer", "")
+
+        handler = SKILL_HANDLERS.get(skill)
+        if handler is None:
+            logger.warning("P2P: no handler for skill %r from %s", skill, source_agent)
+            if request_id and client.connected:
+                resp = MeshMessage(
+                    msg_type="task_response",
+                    request_id=request_id,
+                    source_agent=agent_id,
+                    target_agent=source_agent,
+                    payload={"error": f"unknown skill: {skill}"},
+                )
+                await client.send(from_peer, resp)
+            return
+
+        logger.info("P2P task from %s: skill=%s request_id=%s", source_agent, skill, request_id)
+        try:
+            task_payload["_mesh_client"] = client
+            result = handler(**task_payload)
+            if asyncio.iscoroutine(result):
+                result = await result
+            error_msg = ""
+        except Exception as exc:
+            logger.error("P2P task failed: %s", exc)
+            result = ""
+            error_msg = str(exc)
+
+        # Send task_response back via P2P
+        if request_id and client.connected:
+            resp = MeshMessage(
+                msg_type="task_response",
+                request_id=request_id,
+                source_agent=agent_id,
+                target_agent=source_agent,
+                payload={"result": result or "", "error": error_msg},
+            )
+            await client.send(from_peer, resp)
+
+    client.on("message", _handle_p2p_message)
+
     print(f"Agent '{agent_id}' connected to mesh at {registry}")
     print(f"  Sidecar: {config.sidecar.socket}")
     print(f"  Skills:  {', '.join(config.skills_builtin) or '(none)'}")
     print()
 
-    # 3. Heartbeat loop — also picks up assigned tasks
+    # 3. Heartbeat loop — also picks up assigned tasks (registry fallback path)
     while True:
         try:
             resp = requests.post(
@@ -90,13 +145,21 @@ async def run_agent(config: AgentConfig) -> None:
             )
             body = resp.json()
             for task in body.get("pending_tasks", []):
-                _execute_task(registry, api_key, task)
+                # Non-blocking: spawn each task as a separate coroutine
+                asyncio.create_task(
+                    _execute_task(registry, api_key, task, mesh_client=client)
+                )
         except Exception as exc:
             logger.debug("heartbeat failed: %s", exc)
         await asyncio.sleep(15)
 
 
-def _execute_task(registry: str, api_key: str, task: dict) -> None:
+async def _execute_task(
+    registry: str,
+    api_key: str,
+    task: dict,
+    mesh_client: MeshClient | None = None,
+) -> None:
     """Execute an assigned task and report the result back to the hub."""
     task_id = task.get("id", "")
     skill = task.get("skill", "")
@@ -111,9 +174,18 @@ def _execute_task(registry: str, api_key: str, task: dict) -> None:
 
     logger.info("executing task %s: skill=%s from=%s", task_id, skill, source)
     try:
-        result = handler(**payload) if isinstance(payload, dict) else handler()
+        if isinstance(payload, dict):
+            payload["_mesh_client"] = mesh_client
+            result = handler(**payload)
+        else:
+            result = handler(_mesh_client=mesh_client)
+
+        # Await if the handler is async
+        if asyncio.iscoroutine(result):
+            result = await result
+
         logger.info("task %s completed", task_id)
-        _update_task(registry, api_key, task_id, "completed", result=result)
+        _update_task(registry, api_key, task_id, "completed", result=str(result))
     except Exception as exc:
         logger.error("task %s failed: %s", task_id, exc)
         _update_task(registry, api_key, task_id, "failed", error=str(exc))

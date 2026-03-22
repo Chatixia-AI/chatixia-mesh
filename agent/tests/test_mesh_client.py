@@ -63,6 +63,7 @@ class TestMeshClient:
         client = MeshClient()
         assert client._socket_path == "/tmp/chatixia-sidecar.sock"
         assert client._connected is False
+        assert client._peers == set()
 
     def test_init_custom_socket(self):
         client = MeshClient(socket_path="/tmp/custom.sock")
@@ -83,3 +84,52 @@ class TestMeshClient:
         handler = lambda data: None
         client.on("*", handler)
         assert handler in client._handlers["*"]
+
+
+class TestPeerTracking:
+    def test_on_peer_connected(self):
+        client = MeshClient()
+        client._on_peer_connected({"payload": {"peer_id": "peer-abc"}})
+        assert "peer-abc" in client._peers
+
+    def test_on_peer_connected_ignores_empty(self):
+        client = MeshClient()
+        client._on_peer_connected({"payload": {"peer_id": ""}})
+        assert len(client._peers) == 0
+
+    def test_on_peer_disconnected(self):
+        client = MeshClient()
+        client._peers.add("peer-abc")
+        client._on_peer_disconnected({"payload": {"peer_id": "peer-abc"}})
+        assert "peer-abc" not in client._peers
+
+    def test_on_peer_disconnected_nonexistent(self):
+        client = MeshClient()
+        # Should not raise
+        client._on_peer_disconnected({"payload": {"peer_id": "ghost"}})
+        assert len(client._peers) == 0
+
+    def test_on_peer_list(self):
+        client = MeshClient()
+        client._peers.add("old-peer")
+        client._on_peer_list({"payload": {"peers": ["a", "b", "c"]}})
+        assert client._peers == {"a", "b", "c"}
+
+    def test_on_peer_list_empty(self):
+        client = MeshClient()
+        client._peers.add("old")
+        client._on_peer_list({"payload": {"peers": []}})
+        assert client._peers == set()
+
+    def test_is_peer_connected(self):
+        client = MeshClient()
+        client._peers.add("peer-x")
+        assert client.is_peer_connected("peer-x") is True
+        assert client.is_peer_connected("peer-y") is False
+
+    def test_peers_property_returns_copy(self):
+        client = MeshClient()
+        client._peers.add("p1")
+        peers = client.peers
+        peers.add("p2")
+        assert "p2" not in client._peers

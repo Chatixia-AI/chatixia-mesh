@@ -7,13 +7,18 @@
 ```
 chatixia-mesh/
 ├── registry/           # Rust (axum): signaling + registry + hub API
+│   └── Dockerfile      # Multi-stage: Node (hub) + Rust (registry) → debian-slim
 ├── sidecar/            # Rust (webrtc-rs): WebRTC mesh peer + IPC bridge
+│   └── Dockerfile      # Multi-stage: Rust → debian-slim
 ├── agent/              # Python: AI agent framework
+│   └── Dockerfile      # python:3.13-slim + pip install
 ├── hub/                # React (Vite): monitoring dashboard
 ├── infra/              # Nginx + coturn configs
 ├── site/               # GitHub Pages documentation site
 ├── docs/               # Documentation
 ├── .github/workflows/  # CI: GitHub Pages deployment
+├── docker-compose.yml  # Full stack: registry + sidecar + agent (+ coturn)
+├── .dockerignore       # Docker build exclusions
 ├── Cargo.toml          # Workspace manifest (registry + sidecar)
 ├── .env.example        # All environment variables
 └── agent.yaml.example  # Agent configuration template
@@ -70,9 +75,10 @@ POST /api/token                      # Exchange API key for JWT (auth.rs)
 GET  /ws?token=...                   # WebSocket upgrade (main.rs → signaling)
 GET  /api/registry/agents            # List all agents (registry.rs)
 POST /api/registry/agents            # Register/update agent (registry.rs)
-GET    /api/registry/agents/{agent_id} # Get specific agent (registry.rs)
-DELETE /api/registry/agents/{agent_id} # Unregister agent (registry.rs)
-GET    /api/registry/route?skill=...   # Find agent by skill (registry.rs)
+GET    /api/registry/agents/{agent_id}      # Get specific agent (registry.rs)
+GET    /api/registry/agents/{agent_id}/card # A2A Agent Card for agent (registry.rs)
+DELETE /api/registry/agents/{agent_id}      # Unregister agent (registry.rs)
+GET    /api/registry/route?skill=...        # Find agent by skill (registry.rs)
 POST /api/hub/tasks                  # Submit task (hub.rs)
 GET  /api/hub/tasks/all              # List all tasks (hub.rs)
 GET  /api/hub/tasks/{task_id}        # Get task status (hub.rs)
@@ -87,6 +93,7 @@ POST /api/pairing/{id}/approve        # Approve pending agent (pairing.rs)
 POST /api/pairing/{id}/reject         # Reject pending agent (pairing.rs)
 POST /api/pairing/{id}/revoke         # Revoke approved agent (pairing.rs)
 GET  /api/config                      # ICE server config — STUN + optional TURN (auth.rs)
+GET  /.well-known/agent.json          # A2A discovery — list all active agents (registry.rs)
 ```
 
 ### Background Tasks
@@ -105,6 +112,8 @@ GET  /api/config                      # ICE server config — STUN + optional TU
 | `API_KEYS_FILE` | `api_keys.json` | Path to API key definitions |
 | `TURN_URL` | _(none)_ | Optional TURN server URL |
 | `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials |
+| `REGISTRY_PUBLIC_URL` | `http://localhost:8080` | Public URL for Agent Card `url` fields |
+| `HUB_DIST_DIR` | `hub/dist` | Directory for hub static assets (set to `/srv/hub` in Docker) |
 | `RUST_LOG` | `info` | Tracing filter |
 
 ---
@@ -120,9 +129,9 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `src/main.rs` | Entry point, token exchange, component wiring |
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
 | `src/signaling.rs` | WebSocket client, SDP/ICE relay, peer connection orchestration |
-| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding, DataChannel setup |
+| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding, DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`) |
 | `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels |
-| `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent |
+| `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
 
 ### Key Structs
 
@@ -165,7 +174,7 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 
 | Command | Description |
 |---------|-------------|
-| `chatixia init [name]` | Scaffold a new agent (`agent.yaml`, `.env.example`, `.gitignore`) |
+| `chatixia init [name] [--role researcher\|analyst\|coordinator\|worker]` | Scaffold a new agent with optional role template (`agent.yaml`, `.env.example`, `.gitignore`) |
 | `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat, execute tasks |
 | `chatixia validate [manifest]` | Validate manifest and print summary |
 | `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
@@ -179,15 +188,15 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 | `chatixia/cli.py` | CLI entry point, argument parsing, subcommand dispatch |
 | `chatixia/scaffold.py` | `chatixia init` — writes `agent.yaml`, `.env.example`, `.gitignore` templates |
 | `chatixia/config.py` | `AgentConfig` dataclass, YAML manifest parser (`load_config`) |
-| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats, executes assigned tasks |
+| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats, async task execution, P2P task handler |
 
 ### Core Modules
 
 | File | Purpose |
 |------|---------|
 | `chatixia/core/__init__.py` | Core subpackage init |
-| `chatixia/core/mesh_client.py` | `MeshClient` — async IPC bridge to sidecar, message dispatch, request/response correlation |
-| `chatixia/core/mesh_skills.py` | Synchronous skill handlers: `delegate`, `list_agents`, `mesh_send`, `mesh_broadcast`, `find_agent` |
+| `chatixia/core/mesh_client.py` | `MeshClient` — async IPC bridge to sidecar, message dispatch, request/response correlation, peer tracking |
+| `chatixia/core/mesh_skills.py` | Skill handlers: async P2P (`delegate`, `mesh_send`, `mesh_broadcast`) with registry fallback; sync HTTP (`list_agents`, `find_agent`) |
 | `run_agent.py` | Legacy standalone agent runner (use `chatixia run` instead) |
 | `.env` | Local env var defaults for agent runner (gitignored) |
 
@@ -195,21 +204,21 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 
 | Class | Module | Description |
 |-------|--------|-------------|
-| `AgentConfig` | `chatixia.config` | Dataclass: agent name, registry URL, sidecar config, LLM provider, skills, runtime settings |
+| `AgentConfig` | `chatixia.config` | Dataclass: agent name, role, description, registry URL, sidecar config, LLM provider, skills, runtime settings |
 | `SidecarConfig` | `chatixia.config` | Dataclass: `binary`, `api_key`, `socket` |
 | `MeshMessage` | `chatixia.core.mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
-| `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response |
-| `SKILL_HANDLERS` | `chatixia.runner` | Dict mapping skill name → handler function; used by heartbeat task execution |
+| `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response, tracks connected peers |
+| `SKILL_HANDLERS` | `chatixia.runner` | Dict mapping skill name → sync or async handler function; used by heartbeat + P2P task execution |
 
 ### Skills
 
 | Skill | Handler | Description |
 |-------|---------|-------------|
-| `list_agents` | `handle_list_agents()` | List all agents via registry REST API |
-| `delegate` | `handle_delegate()` | Submit task to hub queue, optionally route by skill, poll for result |
-| `mesh_send` | `handle_mesh_send()` | Send direct message to agent via hub task queue |
-| `mesh_broadcast` | `handle_mesh_broadcast()` | Broadcast to all active agents via hub task queue |
-| `find_agent` | `handle_find_agent()` | Find best agent for a skill via registry route endpoint |
+| `list_agents` | `handle_list_agents()` | List all agents via registry REST API (sync, control plane) |
+| `delegate` | `handle_delegate()` | Async — P2P `task_request`/`task_response` via DataChannel, with registry task queue fallback |
+| `mesh_send` | `handle_mesh_send()` | Async — P2P `agent_prompt` via DataChannel, with registry task queue fallback |
+| `mesh_broadcast` | `handle_mesh_broadcast()` | Async — P2P broadcast via DataChannel, with registry task queue fallback |
+| `find_agent` | `handle_find_agent()` | Find best agent for a skill via registry route endpoint (sync, control plane) |
 
 ### Skill Definition Format (`chatixia/skills/*/skill.json`)
 
@@ -337,6 +346,40 @@ Atmospheric Luminescence design system — light-mode glassmorphic. Inline CSS w
 | `Cargo.toml` | Rust workspace: members `registry`, `sidecar` |
 | `hub/package.json` | Hub dependencies: React 19, Vite 6, TypeScript 5.7 |
 | `agent/pyproject.toml` | Agent dependencies: openai, mcp, fastapi, psycopg, structlog, pyyaml |
+
+---
+
+## Docker Compose (`docker-compose.yml`)
+
+Single-command deployment of the full stack. See ADR-015.
+
+```bash
+docker compose up --build          # build and start all services
+docker compose --profile turn up   # include coturn TURN relay
+```
+
+### Services
+
+| Service | Image base | Ports | Depends on |
+|---------|-----------|-------|------------|
+| `registry` | `debian:bookworm-slim` (multi-stage: Node + Rust) | `8080` | — |
+| `sidecar` | `debian:bookworm-slim` (multi-stage: Rust) | — | `registry` (healthy) |
+| `agent` | `python:3.13-slim-bookworm` | — | `registry` (healthy), `sidecar` (started) |
+| `coturn` | `coturn/coturn:4` | `3478/udp`, `3478/tcp` | — (profile: `turn`) |
+
+### Volumes
+
+| Volume | Purpose |
+|--------|---------|
+| `ipc-socket` | Shared Unix socket between sidecar and agent (`/run/chatixia/sidecar.sock`) |
+
+### Dockerfiles
+
+| File | Build stages | Output |
+|------|-------------|--------|
+| `registry/Dockerfile` | `hub-builder` (Node 22) → `rust-builder` (Rust 1.87) → `debian:bookworm-slim` | Registry binary + hub static assets |
+| `sidecar/Dockerfile` | `builder` (Rust 1.87) → `debian:bookworm-slim` | Sidecar binary |
+| `agent/Dockerfile` | `python:3.13-slim-bookworm` | chatixia Python package |
 
 ---
 

@@ -30,6 +30,7 @@ pub async fn serve(
     socket_path: &str,
     mut to_agent_rx: mpsc::UnboundedReceiver<IpcMessage>,
     mesh: Arc<MeshManager>,
+    to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
 ) -> Result<()> {
     // Remove old socket file if it exists
     let _ = tokio::fs::remove_file(socket_path).await;
@@ -70,7 +71,7 @@ pub async fn serve(
                     continue;
                 }
                 match serde_json::from_str::<IpcMessage>(trimmed) {
-                    Ok(msg) => handle_agent_command(msg, &mesh).await,
+                    Ok(msg) => handle_agent_command(msg, &mesh, &to_agent_tx).await,
                     Err(e) => warn!("[IPC] failed to parse: {}", e),
                 }
             }
@@ -86,7 +87,11 @@ pub async fn serve(
 }
 
 /// Handle a command from the Python agent.
-async fn handle_agent_command(msg: IpcMessage, mesh: &Arc<MeshManager>) {
+async fn handle_agent_command(
+    msg: IpcMessage,
+    mesh: &Arc<MeshManager>,
+    to_agent_tx: &mpsc::UnboundedSender<IpcMessage>,
+) {
     match msg.msg_type.as_str() {
         ipc_types::SEND => {
             // Send to specific peer
@@ -112,10 +117,12 @@ async fn handle_agent_command(msg: IpcMessage, mesh: &Arc<MeshManager>) {
             }
         }
         ipc_types::LIST_PEERS => {
-            // List connected peers (response sent back via to_agent channel)
             let peers = mesh.connected_peers();
             info!("[IPC] list_peers: {:?}", peers);
-            // Note: response goes through the to_agent_tx channel in mesh manager
+            let _ = to_agent_tx.send(IpcMessage {
+                msg_type: ipc_types::PEER_LIST.into(),
+                payload: serde_json::json!({ "peers": peers }),
+            });
         }
         other => {
             warn!("[IPC] unknown command: {}", other);

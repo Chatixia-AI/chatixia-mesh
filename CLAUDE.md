@@ -71,3 +71,7 @@ All documentation lives in the `docs/` folder. Always log decisions and keep doc
 | `docs/GLOSSARY.md`      | When encountering unfamiliar domain terms                          | When introducing new domain-specific terms — append as a markdown table row                                                          |
 | `docs/THREAT_MODEL.md`  | When working on auth, security, or network-facing code             | When adding new attack surfaces, mitigations, or security-relevant changes                                                           |
 | `docs/meetings/`        | For context on prior session work                                  | After every session — create `yyyy_mm_dd_S<session_number>.md` with summary, decisions, next actions, and items needing human review |
+
+## NEVER commit these files
+
+- **`docs/meetings/`** — Session meeting notes are LOCAL ONLY. They are gitignored. NEVER `git add` them, NEVER use `git add -f` to force them, NEVER include them in commits. They exist for local context between sessions, not for the repo.

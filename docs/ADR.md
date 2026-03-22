@@ -258,3 +258,79 @@ Task execution runs inline in the heartbeat loop for simplicity. Long-running ta
 - (+) Simple implementation — skill handlers are already synchronous functions
 - (-) Heartbeat interval (~15s) bounds task pickup latency
 - (-) Inline execution blocks the heartbeat loop during skill execution — acceptable for fast skills, needs async dispatch for slow ones
+
+---
+
+## ADR-014: Git History Rewrite for Public Release
+
+**Date:** 2026-03-22
+**Status:** Accepted
+
+**Context:** The repository was originally a private fork of an internal procurement assistant (ProcX/chatixia-agent). The initial commits contained sensitive files that must not be exposed when the repo goes public: real SAP Ariba purchase requisition data (`ariba_prs.md`), a production Postgres schema dump (`docs/postgres_schema_snapshot.json`), local filesystem paths in `.mcp.json`, BLE device MAC addresses (`deploy/pi-agent/devices.yaml`), a third-party PDF, and an internal context document (`CONTEXT.md`).
+
+**Decision:** Use `git filter-repo --invert-paths` to permanently remove the 6 sensitive files from all commits across all branches, then force-push the rewritten history. This approach was chosen over a fresh squash to preserve the meaningful commit history of the monorepo era (commits `7b6afc1` onward).
+
+**Consequences:**
+
+- (+) All sensitive business data, local paths, and device identifiers are permanently removed from git history
+- (+) Commit history from the monorepo era is fully preserved
+- (+) Repository is safe for public visibility
+- (-) Force-push rewrites remote history — any existing clones or forks are invalidated
+- (-) Old commit hashes from the pre-monorepo lineage are changed (GitHub PR/issue references to those hashes will break)
+
+---
+
+## ADR-015: Docker Compose Deployment
+
+**Date:** 2026-03-22
+**Status:** Accepted
+
+**Context:** Running chatixia-mesh requires starting multiple components (registry, sidecar, agent, hub) with correct environment variables, network connectivity, and startup ordering. The README tells users to run 3+ separate commands in different terminals. There is no single-command way to start the full stack, which makes onboarding and testing painful.
+
+**Decision:** Add Docker Compose as the primary deployment method (Roadmap item 0.5). Structure:
+
+- **Registry Dockerfile** — multi-stage: Node.js builds hub static assets, Rust builds the registry binary, final image is `debian:bookworm-slim` with both.
+- **Sidecar Dockerfile** — multi-stage Rust build, same workspace caching pattern.
+- **Agent Dockerfile** — `python:3.13-slim-bookworm` with `pip install .` of the chatixia package.
+- **docker-compose.yml** — wires registry, sidecar, agent together. Sidecar ↔ agent share an IPC socket via a named volume. Registry health check gates sidecar/agent startup. coturn available via `--profile turn`.
+- **`HUB_DIST_DIR` env var** — registry's static file serving path is now configurable (was hardcoded to `hub/dist`). Docker sets it to `/srv/hub`; local dev is unchanged.
+
+**Consequences:**
+
+- (+) `docker compose up --build` starts the entire stack — zero manual setup
+- (+) Service dependencies enforced via health checks — no startup race conditions
+- (+) IPC socket shared via volume — sidecar and agent don't need to be in the same container
+- (+) coturn is opt-in via `--profile turn` — not required for local development
+- (+) Hub assets built inside the registry image — no separate build step needed
+- (-) First build is slow (~5 min) due to Rust compilation; subsequent builds use Docker layer cache
+- (-) Agent container does not include the sidecar binary — agent cannot spawn sidecar itself in Docker mode (sidecar runs as a separate service)
+
+---
+
+## ADR-016: P2P Task Execution via DataChannels
+
+**Date:** 2026-03-22
+**Status:** Accepted
+
+**Context:** Despite the system's P2P architecture (WebRTC DataChannels between sidecars), all agent-to-agent task execution routed through the registry's REST API task queue (ADR-005, ADR-013). The `delegate`, `mesh_send`, and `mesh_broadcast` skill handlers used synchronous HTTP calls to `POST /api/hub/tasks`, and the target agent picked up tasks on its next heartbeat poll (~15s). This contradicted the core positioning: "registry is control plane only, agents talk directly."
+
+**Decision:** Route task delegation and messaging through WebRTC DataChannels with automatic fallback to the registry task queue:
+
+1. **Sidecar emits peer lifecycle events** — `peer_connected`, `peer_disconnected`, `peer_list` IPC messages to the Python agent (protocol types already defined but never sent).
+2. **MeshClient tracks connected peers** — maintains a local peer set from sidecar events.
+3. **Skill handlers are async with P2P-first path** — `handle_delegate` sends `task_request` via `MeshClient.request()` (send + await `task_response` matched by `request_id`); `handle_mesh_send` and `handle_mesh_broadcast` send `agent_prompt` messages via `MeshClient.send()`/`broadcast()`.
+4. **Runner registers P2P task handler** — incoming `task_request` messages via DataChannel are dispatched to skill handlers, with `task_response` sent back via DataChannel.
+5. **Non-blocking task execution** — `asyncio.create_task()` in the heartbeat loop replaces synchronous inline execution.
+6. **Registry fallback preserved** — if the target peer is not directly connected (no DataChannel), the handler falls back to the existing HTTP task queue path.
+
+Discovery (`list_agents`, `find_agent`) remains HTTP to the registry — that is legitimate control plane.
+
+**Consequences:**
+
+- (+) Agent-to-agent data flows directly over DTLS-encrypted DataChannels — registry is truly out of the data path
+- (+) Sub-second task delegation latency (vs. 3–15s with heartbeat polling)
+- (+) Connected agents keep working if the registry goes down (P2P resilience)
+- (+) Async handlers no longer block the heartbeat loop
+- (+) Backward compatible — HTTP fallback preserves behavior when P2P path is unavailable
+- (-) Discovery still requires the registry — agents can't find new peers without it
+- (-) HTTP fallback path still uses synchronous urllib (acceptable since it's the backup path)
