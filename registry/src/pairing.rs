@@ -76,8 +76,8 @@ impl PairingState {
 
     /// Generate a 6-digit invite code.
     fn generate_code(&self, created_by: &str) -> String {
-        let mut rng = rand::thread_rng();
-        let code = format!("{:06}", rng.gen_range(0..1_000_000u32));
+        let mut rng = rand::rng();
+        let code = format!("{:06}", rng.random_range(0..1_000_000u32));
         self.codes.insert(
             code.clone(),
             InviteCode {
@@ -225,8 +225,8 @@ impl PairingState {
 
 /// Generate a device token: "dt_" + 32 hex chars (128-bit random).
 fn generate_device_token() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 16] = rng.random();
     format!(
         "dt_{}",
         bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
@@ -235,8 +235,8 @@ fn generate_device_token() -> String {
 
 /// Generate a peer ID: "agent-" + 6 hex chars.
 fn generate_peer_id() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 3] = rng.gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 3] = rng.random();
     format!(
         "agent-{}",
         bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
