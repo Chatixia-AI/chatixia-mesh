@@ -87,11 +87,7 @@ impl HubState {
     }
 
     /// Find pending tasks matching an agent's skills.
-    pub fn get_pending_for_agent(
-        &self,
-        agent_id: &str,
-        skills: &[String],
-    ) -> Vec<Task> {
+    pub fn get_pending_for_agent(&self, agent_id: &str, skills: &[String]) -> Vec<Task> {
         let now = epoch_now();
         let mut result = Vec::new();
         for mut entry in self.tasks.iter_mut() {
@@ -230,7 +226,8 @@ mod tests {
     #[test]
     fn test_get_pending_by_agent_id() {
         let hub = HubState::new();
-        hub.tasks.insert("t1".into(), make_task("t1", "", "agent-1", "pending"));
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "", "agent-1", "pending"));
         let result = hub.get_pending_for_agent("agent-1", &[]);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "t1");
@@ -239,7 +236,8 @@ mod tests {
     #[test]
     fn test_get_pending_by_skill() {
         let hub = HubState::new();
-        hub.tasks.insert("t1".into(), make_task("t1", "search", "", "pending"));
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "", "pending"));
         let result = hub.get_pending_for_agent("any-agent", &["search".to_string()]);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, "t1");
@@ -248,7 +246,8 @@ mod tests {
     #[test]
     fn test_get_pending_marks_assigned() {
         let hub = HubState::new();
-        hub.tasks.insert("t1".into(), make_task("t1", "search", "", "pending"));
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "", "pending"));
         let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
         assert_eq!(result[0].state, "assigned");
         // Verify it's also updated in the map
@@ -258,7 +257,8 @@ mod tests {
     #[test]
     fn test_get_pending_skips_completed() {
         let hub = HubState::new();
-        hub.tasks.insert("t1".into(), make_task("t1", "search", "a1", "completed"));
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "a1", "completed"));
         let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
         assert!(result.is_empty());
     }

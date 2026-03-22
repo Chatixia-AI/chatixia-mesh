@@ -1,4 +1,4 @@
-FROM python:3.13-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 # System deps for psycopg binary
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
@@ -6,10 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
 
 WORKDIR /app
 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install chatixia package
 COPY agent/ /app/
-RUN pip install --no-cache-dir .
+RUN uv sync --frozen --no-dev
 
 # Default: validate manifest exists then run
-ENTRYPOINT ["chatixia"]
+ENTRYPOINT ["uv", "run", "chatixia"]
 CMD ["run"]

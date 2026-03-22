@@ -5,9 +5,8 @@ use axum::Json;
 use chrono::Utc;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::AppState;
 
@@ -60,6 +59,7 @@ pub struct AgentRecord {
 
 /// Heartbeat payload (from agent SDK).
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Heartbeat {
     pub agent_id: String,
     #[serde(default)]
@@ -134,7 +134,11 @@ impl RegistryState {
             .iter()
             .filter(|e| {
                 e.value().health == "active"
-                    && e.value().info.capabilities.skills.contains(&skill.to_string())
+                    && e.value()
+                        .info
+                        .capabilities
+                        .skills
+                        .contains(&skill.to_string())
             })
             .map(|e| e.value().clone())
             .collect()
@@ -272,10 +276,9 @@ pub async fn heartbeat(
     }
 
     // Find pending tasks for this agent
-    let pending = state.hub.get_pending_for_agent(
-        &hb.agent_id,
-        &hb.skill_names,
-    );
+    let pending = state
+        .hub
+        .get_pending_for_agent(&hb.agent_id, &hb.skill_names);
 
     Json(serde_json::json!({
         "status": "ok",
@@ -343,8 +346,14 @@ mod tests {
     #[test]
     fn test_find_by_skill_filters_active_only() {
         let reg = RegistryState::new();
-        reg.agents.insert("a1".into(), make_agent("a1", vec!["search".into()], "active"));
-        reg.agents.insert("a2".into(), make_agent("a2", vec!["search".into()], "offline"));
+        reg.agents.insert(
+            "a1".into(),
+            make_agent("a1", vec!["search".into()], "active"),
+        );
+        reg.agents.insert(
+            "a2".into(),
+            make_agent("a2", vec!["search".into()], "offline"),
+        );
         let results = reg.find_by_skill("search");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].info.agent_id, "a1");
@@ -353,7 +362,8 @@ mod tests {
     #[test]
     fn test_find_by_skill_no_match() {
         let reg = RegistryState::new();
-        reg.agents.insert("a1".into(), make_agent("a1", vec!["chat".into()], "active"));
+        reg.agents
+            .insert("a1".into(), make_agent("a1", vec!["chat".into()], "active"));
         assert!(reg.find_by_skill("search").is_empty());
     }
 

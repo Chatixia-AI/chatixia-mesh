@@ -177,10 +177,7 @@ impl PairingState {
     fn check_rate_limit(&self, ip: &str) -> bool {
         let now = Instant::now();
         let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
-        let mut attempts = self
-            .rate_limits
-            .entry(ip.to_string())
-            .or_insert_with(Vec::new);
+        let mut attempts = self.rate_limits.entry(ip.to_string()).or_default();
         attempts.retain(|t| now.duration_since(*t) < window);
         if attempts.len() >= RATE_LIMIT_MAX_ATTEMPTS {
             return false;
@@ -229,7 +226,10 @@ fn generate_device_token() -> String {
     let bytes: [u8; 16] = rng.random();
     format!(
         "dt_{}",
-        bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
     )
 }
 
@@ -239,7 +239,10 @@ fn generate_peer_id() -> String {
     let bytes: [u8; 3] = rng.random();
     format!(
         "agent-{}",
-        bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
     )
 }
 
@@ -405,7 +408,10 @@ pub async fn revoke_handler(
 ) -> impl IntoResponse {
     match state.pairing.revoke(&id) {
         Some(entry) => {
-            info!("[PAIRING] revoked: peer_id={} id={}", entry.peer_id, entry.id);
+            info!(
+                "[PAIRING] revoked: peer_id={} id={}",
+                entry.peer_id, entry.id
+            );
             Json(serde_json::json!({ "status": "ok" })).into_response()
         }
         None => (

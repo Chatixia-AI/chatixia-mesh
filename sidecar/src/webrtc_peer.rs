@@ -8,7 +8,7 @@ use base64::{engine::general_purpose, Engine};
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
@@ -22,7 +22,7 @@ use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
 
 use crate::mesh::MeshManager;
-use crate::protocol::{IpcMessage, MeshMessage, SignalingMessage, ipc_types};
+use crate::protocol::{ipc_types, IpcMessage, MeshMessage, SignalingMessage};
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -46,7 +46,6 @@ fn ice_servers_from_env() -> Vec<RTCIceServer> {
             urls: vec![turn_url],
             username,
             credential,
-            ..Default::default()
         });
     }
 
@@ -143,11 +142,10 @@ fn setup_ice_forwarding(
 fn setup_datachannel_handler(
     dc: Arc<RTCDataChannel>,
     remote_peer_id: &str,
-    mesh: Arc<MeshManager>,
+    _mesh: Arc<MeshManager>,
     to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
 ) {
     let rpid = remote_peer_id.to_string();
-    let mesh_for_msg = mesh.clone();
 
     // Clone for on_open before on_message takes ownership
     let to_agent_for_open = to_agent_tx.clone();

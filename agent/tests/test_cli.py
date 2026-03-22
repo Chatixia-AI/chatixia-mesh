@@ -38,7 +38,9 @@ class TestCliMain:
 
     def test_validate_valid_manifest(self, tmp_path):
         manifest = tmp_path / "agent.yaml"
-        manifest.write_text("name: valid-agent\nprovider: azure\nregistry: http://localhost:8080\n")
+        manifest.write_text(
+            "name: valid-agent\nprovider: azure\nregistry: http://localhost:8080\n"
+        )
         result = main(["validate", str(manifest)])
         assert result == 0
 

@@ -50,8 +50,7 @@ async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -84,7 +83,10 @@ async fn main() -> anyhow::Result<()> {
         // Registry
         .route("/api/registry/agents", get(registry::list_agents))
         .route("/api/registry/agents", post(registry::register_agent))
-        .route("/api/registry/agents/{agent_id}", get(registry::get_agent).delete(registry::delete_agent))
+        .route(
+            "/api/registry/agents/{agent_id}",
+            get(registry::get_agent).delete(registry::delete_agent),
+        )
         .route("/api/registry/route", get(registry::route_by_skill))
         // Hub — tasks
         .route("/api/hub/tasks", post(hub::submit_task))
@@ -95,7 +97,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/hub/heartbeat", post(registry::heartbeat))
         .route("/api/hub/network/topology", get(topology::network_topology))
         // Pairing + approval
-        .route("/api/pairing/generate-code", post(pairing::generate_code_handler))
+        .route(
+            "/api/pairing/generate-code",
+            post(pairing::generate_code_handler),
+        )
         .route("/api/pairing/pair", post(pairing::pair_handler))
         .route("/api/pairing/pending", get(pairing::list_pending_handler))
         .route("/api/pairing/all", get(pairing::list_all_handler))
@@ -113,7 +118,11 @@ async fn main() -> anyhow::Result<()> {
     info!("registry listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

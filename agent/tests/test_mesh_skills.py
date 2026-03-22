@@ -1,10 +1,8 @@
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from chatixia.core.mesh_skills import (
-    handle_list_agents,
     handle_find_agent,
     handle_delegate,
     handle_mesh_send,

@@ -101,7 +101,9 @@ async def run_agent(config: AgentConfig) -> None:
                 await client.send(from_peer, resp)
             return
 
-        logger.info("P2P task from %s: skill=%s request_id=%s", source_agent, skill, request_id)
+        logger.info(
+            "P2P task from %s: skill=%s request_id=%s", source_agent, skill, request_id
+        )
         try:
             task_payload["_mesh_client"] = client
             result = handler(**task_payload)
@@ -169,7 +171,9 @@ async def _execute_task(
     handler = SKILL_HANDLERS.get(skill)
     if handler is None:
         logger.warning("no handler for skill %r (task %s)", skill, task_id)
-        _update_task(registry, api_key, task_id, "failed", error=f"unknown skill: {skill}")
+        _update_task(
+            registry, api_key, task_id, "failed", error=f"unknown skill: {skill}"
+        )
         return
 
     logger.info("executing task %s: skill=%s from=%s", task_id, skill, source)

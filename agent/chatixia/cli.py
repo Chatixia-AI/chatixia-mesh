@@ -219,7 +219,11 @@ def _cmd_pair(args: argparse.Namespace) -> int:
         return 1
 
     if resp.status_code != 200:
-        error = resp.json().get("error", resp.text) if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+        error = (
+            resp.json().get("error", resp.text)
+            if resp.headers.get("content-type", "").startswith("application/json")
+            else resp.text
+        )
         print(f"Error: {error}", file=sys.stderr)
         return 1
 
@@ -235,7 +239,9 @@ def _cmd_pair(args: argparse.Namespace) -> int:
     if status == "pending_approval":
         print("\nWaiting for admin approval in the hub dashboard.")
         print("Once approved, your device token will be shown here.")
-        print(f"Check status: curl {registry}/api/pairing/all | jq '.[] | select(.id==\"{entry_id}\")'")
+        print(
+            f"Check status: curl {registry}/api/pairing/all | jq '.[] | select(.id==\"{entry_id}\")'"
+        )
 
     # Save pairing result to .chatixia/pairing.json for later use
     from pathlib import Path

@@ -1,10 +1,11 @@
 # --- Hub build stage ---
 FROM node:22-slim AS hub-builder
+RUN corepack enable
 WORKDIR /app
-COPY hub/package.json hub/package-lock.json* ./
-RUN npm ci
+COPY hub/package.json hub/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY hub/ .
-RUN npm run build
+RUN pnpm build
 
 # --- Rust build stage ---
 FROM rust:1.87-bookworm AS rust-builder

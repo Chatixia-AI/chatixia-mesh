@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -11,6 +10,7 @@ use webrtc::peer_connection::RTCPeerConnection;
 use crate::protocol::MeshMessage;
 
 /// A connected peer in the mesh.
+#[allow(dead_code)]
 pub struct MeshPeer {
     pub peer_id: String,
     pub pc: Arc<RTCPeerConnection>,
@@ -20,6 +20,7 @@ pub struct MeshPeer {
 /// Manages the full mesh of WebRTC connections.
 pub struct MeshManager {
     /// Our peer ID.
+    #[allow(dead_code)]
     pub local_peer_id: String,
     /// peer_id → MeshPeer
     peers: DashMap<String, MeshPeer>,
@@ -46,7 +47,11 @@ impl MeshManager {
                 dc: None,
             },
         );
-        info!("[MESH] peer added: {} (total: {})", peer_id, self.peers.len());
+        info!(
+            "[MESH] peer added: {} (total: {})",
+            peer_id,
+            self.peers.len()
+        );
     }
 
     /// Store a data channel for a peer.
@@ -62,7 +67,11 @@ impl MeshManager {
     pub fn remove_peer(&self, peer_id: &str) {
         self.peers.remove(peer_id);
         self.channels.remove(peer_id);
-        info!("[MESH] peer removed: {} (total: {})", peer_id, self.peers.len());
+        info!(
+            "[MESH] peer removed: {} (total: {})",
+            peer_id,
+            self.peers.len()
+        );
     }
 
     /// Get the peer connection for a peer.
@@ -106,7 +115,14 @@ impl MeshManager {
 
     /// List all connected peer IDs.
     pub fn connected_peers(&self) -> Vec<String> {
-        self.channels.iter().map(|e: dashmap::mapref::multiple::RefMulti<'_, String, Arc<RTCDataChannel>>| e.key().clone()).collect()
+        self.channels
+            .iter()
+            .map(
+                |e: dashmap::mapref::multiple::RefMulti<'_, String, Arc<RTCDataChannel>>| {
+                    e.key().clone()
+                },
+            )
+            .collect()
     }
 
     /// Check if we have a connection to a peer.
