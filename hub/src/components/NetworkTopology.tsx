@@ -42,13 +42,23 @@ export function NetworkTopology({ topology }: { topology: Topology | null }) {
       return
     }
 
-    // Layout: hub in center, agents in circle
+    // Layout: hub position + agent positions depend on node count
+    const smallLayout = nodes.length <= 4
     const hubX = W / 2
-    const hubY = H / 2
+    const hubY = smallLayout ? H * 0.30 : H / 2
     const circleRadius = Math.min(W, H) * 0.34
 
     // Position nodes
     const positions = nodes.map((_, i) => {
+      if (smallLayout) {
+        // Spread agents horizontally on a lower band
+        const n = nodes.length
+        const xStart = W * 0.30
+        const xEnd = W * 0.70
+        const x = n === 1 ? W / 2 : xStart + (xEnd - xStart) * (i / (n - 1))
+        return { x, y: H * 0.70 }
+      }
+      // 5+ nodes: circular layout
       const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2
       return { x: hubX + Math.cos(angle) * circleRadius, y: hubY + Math.sin(angle) * circleRadius }
     })
@@ -62,22 +72,6 @@ export function NetworkTopology({ topology }: { topology: Topology | null }) {
       ctx.lineTo(positions[i].x, positions[i].y)
       ctx.stroke()
     })
-
-    // Draw mesh edges (agent ↔ agent) — primary tinted dashes
-    for (const edge of topology.mesh_edges || []) {
-      const fromIdx = nodes.findIndex(n => n.sidecar_peer_id === edge.from_peer)
-      const toIdx = nodes.findIndex(n => n.sidecar_peer_id === edge.to_peer)
-      if (fromIdx >= 0 && toIdx >= 0) {
-        ctx.strokeStyle = 'rgba(0,100,123,0.18)'
-        ctx.lineWidth = 1.5
-        ctx.setLineDash([4, 5])
-        ctx.beginPath()
-        ctx.moveTo(positions[fromIdx].x, positions[fromIdx].y)
-        ctx.lineTo(positions[toIdx].x, positions[toIdx].y)
-        ctx.stroke()
-        ctx.setLineDash([])
-      }
-    }
 
     // Draw hub node — gradient circle
     const hubGrad = ctx.createLinearGradient(hubX - 20, hubY - 20, hubX + 20, hubY + 20)
@@ -130,6 +124,42 @@ export function NetworkTopology({ topology }: { topology: Topology | null }) {
       ctx.font = `500 8px 'JetBrains Mono', monospace`
       ctx.fillText(`${node.skills_count} skills`, x, y + 37)
     })
+
+    // Draw mesh edges (agent <-> agent) — primary tinted dashes, drawn last so they appear on top
+    for (const edge of topology.mesh_edges || []) {
+      const fromIdx = nodes.findIndex(n => n.sidecar_peer_id === edge.from_peer)
+      const toIdx = nodes.findIndex(n => n.sidecar_peer_id === edge.to_peer)
+      if (fromIdx >= 0 && toIdx >= 0) {
+        const from = positions[fromIdx]
+        const to = positions[toIdx]
+        // Compute a control point offset perpendicular to the edge, bowing toward the hub
+        const mx = (from.x + to.x) / 2
+        const my = (from.y + to.y) / 2
+        const dx = to.x - from.x
+        const dy = to.y - from.y
+        const len = Math.sqrt(dx * dx + dy * dy) || 1
+        // Perpendicular unit vector
+        const px = -dy / len
+        const py = dx / len
+        // Offset toward the hub: pick the perpendicular direction closer to the hub
+        const toHubX = hubX - mx
+        const toHubY = hubY - my
+        const dot = px * toHubX + py * toHubY
+        const sign = dot >= 0 ? 1 : -1
+        const bowAmount = Math.min(len * 0.25, 50)
+        const cpx = mx + sign * px * bowAmount
+        const cpy = my + sign * py * bowAmount
+
+        ctx.strokeStyle = 'rgba(0,100,123,0.40)'
+        ctx.lineWidth = 2
+        ctx.setLineDash([6, 4])
+        ctx.beginPath()
+        ctx.moveTo(from.x, from.y)
+        ctx.quadraticCurveTo(cpx, cpy, to.x, to.y)
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
+    }
   }, [topology])
 
   return (
