@@ -19,7 +19,7 @@ Instead, please email **security@chatixia.ai** with:
 3. The potential impact
 4. Any suggested fixes (optional)
 
-We will acknowledge your report within **72 hours** and aim to provide a fix or mitigation within **14 days** for critical issues.
+We will acknowledge your report within **48 hours** and aim to provide a fix or mitigation within **7 days** for critical issues.
 
 ## Scope
 
