@@ -334,3 +334,28 @@ Discovery (`list_agents`, `find_agent`) remains HTTP to the registry — that is
 - (+) Backward compatible — HTTP fallback preserves behavior when P2P path is unavailable
 - (-) Discovery still requires the registry — agents can't find new peers without it
 - (-) HTTP fallback path still uses synchronous urllib (acceptable since it's the backup path)
+
+---
+
+## ADR-017: Automated PyPI Publishing with Version Bump Enforcement
+
+**Date:** 2026-03-23
+**Status:** Accepted
+
+**Context:** The `chatixia` PyPI package was published manually. After code changes landed in `agent/`, the team had to remember to bump the version in `pyproject.toml` and run `uv build` + `twine upload` locally. This was easy to forget — the 0.2.0 release shipped two commits behind because no one noticed the version hadn't been bumped.
+
+**Decision:** Automate PyPI publishing via GitHub Actions and enforce version bumps on PRs:
+
+1. **`publish-pypi.yml`** — triggered on GitHub Release with a `v*` tag. Verifies the tag matches `pyproject.toml` version, builds with `uv build`, publishes via PyPI OIDC trusted publisher (no API token stored in secrets).
+2. **`python-version-check` CI job** — runs on PRs to `main`. If any files in `agent/chatixia/**` or `agent/pyproject.toml` changed, the job fails unless the version in `pyproject.toml` was also bumped relative to the base branch.
+
+Release flow: PR with code changes → CI enforces version bump → merge → create GitHub Release with `v{version}` tag → workflow publishes to PyPI.
+
+**Consequences:**
+
+- (+) No manual build/upload steps — release is a single GitHub Release click
+- (+) OIDC trusted publisher — no long-lived PyPI API token to manage
+- (+) Tag-version mismatch caught before publish (tag must match `pyproject.toml`)
+- (+) Forgotten version bumps caught before merge (CI fails the PR)
+- (-) Requires one-time PyPI trusted publisher setup (Owner: `Chatixia-AI`, Repo: `chatixia-mesh`, Workflow: `publish-pypi.yml`, Environment: `pypi`)
+- (-) Version check only compares `agent/chatixia/**` and `agent/pyproject.toml` — changes to test files alone won't require a bump (by design)

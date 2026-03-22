@@ -120,9 +120,9 @@ def write_scaffold(name: str, directory: str = ".") -> Path:
     print(f"Created {manifest_path}")
     print()
     print("Next steps:")
-    print(f"  1. cp .env.example .env        # Fill in your credentials")
-    print(f"  2. chatixia validate            # Check everything is correct")
-    print(f"  3. chatixia pair <code>         # Pair with a mesh (get code from admin)")
-    print(f"  4. chatixia run                 # Connect to the mesh")
+    print("  1. cp .env.example .env        # Fill in your credentials")
+    print("  2. chatixia validate            # Check everything is correct")
+    print("  3. chatixia pair <code>         # Pair with a mesh (get code from admin)")
+    print("  4. chatixia run                 # Connect to the mesh")
 
     return manifest_path

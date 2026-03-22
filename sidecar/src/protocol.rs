@@ -34,6 +34,7 @@ pub struct MeshMessage {
 }
 
 /// DataChannel message types.
+#[allow(dead_code)]
 pub mod mesh_types {
     /// Ping/pong for connectivity testing.
     pub const PING: &str = "ping";
@@ -70,18 +71,19 @@ pub struct IpcMessage {
 }
 
 /// IPC message types.
+#[allow(dead_code)]
 pub mod ipc_types {
     // Agent → Sidecar commands
-    pub const SEND: &str = "send";           // Send message to specific peer
+    pub const SEND: &str = "send"; // Send message to specific peer
     pub const BROADCAST: &str = "broadcast"; // Broadcast to all peers
-    pub const CONNECT: &str = "connect";     // Connect to a peer
+    pub const CONNECT: &str = "connect"; // Connect to a peer
     pub const LIST_PEERS: &str = "list_peers"; // List connected peers
 
     // Sidecar → Agent events
-    pub const MESSAGE: &str = "message";               // Received message from peer
+    pub const MESSAGE: &str = "message"; // Received message from peer
     pub const PEER_CONNECTED: &str = "peer_connected";
     pub const PEER_DISCONNECTED: &str = "peer_disconnected";
-    pub const PEER_LIST: &str = "peer_list";           // Response to list_peers
+    pub const PEER_LIST: &str = "peer_list"; // Response to list_peers
 }
 
 #[cfg(test)]

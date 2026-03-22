@@ -14,10 +14,9 @@ import json
 import logging
 import os
 import subprocess
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable
 
 logger = logging.getLogger("chatixia.mesh")
 

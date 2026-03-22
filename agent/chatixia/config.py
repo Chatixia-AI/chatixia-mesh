@@ -62,7 +62,9 @@ class AgentConfig:
         if not self.name:
             errors.append("'name' is required")
         if self.provider not in ("azure", "openai", "ollama"):
-            errors.append(f"Unknown provider: {self.provider!r} (expected azure|openai|ollama)")
+            errors.append(
+                f"Unknown provider: {self.provider!r} (expected azure|openai|ollama)"
+            )
         if not self.registry:
             errors.append("'registry' URL is required")
         return errors

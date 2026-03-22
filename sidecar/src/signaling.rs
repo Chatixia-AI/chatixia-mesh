@@ -14,6 +14,7 @@ use crate::webrtc_peer;
 
 /// Token response from /api/token.
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct TokenResponse {
     pub token: String,
     pub peer_id: String,
@@ -58,7 +59,7 @@ pub async fn run(
         .await?;
 
     // Forward outbound signaling messages
-    let mut ws_write_task = tokio::spawn(async move {
+    let ws_write_task = tokio::spawn(async move {
         while let Some(msg) = sig_rx.recv().await {
             if ws_write.send(Message::Text(msg.into())).await.is_err() {
                 break;
@@ -73,14 +74,7 @@ pub async fn run(
             let text_str: &str = text.as_ref();
             match serde_json::from_str::<SignalingMessage>(text_str) {
                 Ok(sm) => {
-                    handle_signaling_message(
-                        sm,
-                        &peer_id,
-                        &sig_tx,
-                        &mesh,
-                        &to_agent_tx,
-                    )
-                    .await;
+                    handle_signaling_message(sm, &peer_id, &sig_tx, &mesh, &to_agent_tx).await;
                 }
                 Err(e) => {
                     warn!("[SIG] failed to parse message: {}", e);
@@ -116,15 +110,14 @@ async fn handle_signaling_message(
                             let to_agent = to_agent_tx.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = webrtc_peer::initiate_connection(
-                                    &local_id,
-                                    &target_id,
-                                    sig_tx,
-                                    mesh,
-                                    to_agent,
+                                    &local_id, &target_id, sig_tx, mesh, to_agent,
                                 )
                                 .await
                                 {
-                                    error!("[SIG] failed to initiate connection to {}: {}", target_id, e);
+                                    error!(
+                                        "[SIG] failed to initiate connection to {}: {}",
+                                        target_id, e
+                                    );
                                 }
                             });
                         }
@@ -143,12 +136,7 @@ async fn handle_signaling_message(
                 let to_agent = to_agent_tx.clone();
                 tokio::spawn(async move {
                     if let Err(e) = webrtc_peer::handle_offer(
-                        &local_id,
-                        &from_peer,
-                        &sdp,
-                        sig_tx,
-                        mesh,
-                        to_agent,
+                        &local_id, &from_peer, &sdp, sig_tx, mesh, to_agent,
                     )
                     .await
                     {

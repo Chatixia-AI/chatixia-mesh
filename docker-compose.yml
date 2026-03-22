@@ -1,0 +1,103 @@
+# chatixia-mesh — full stack development deployment
+#
+# Usage:
+#   docker compose up --build      # build and start all services
+#   docker compose up -d           # start detached
+#   docker compose logs -f         # tail all logs
+#   docker compose down            # stop and remove containers
+#
+# Hub dashboard: http://localhost:8080
+# Registry API:  http://localhost:8080/api/
+
+services:
+  # ── Registry: signaling + agent registry + hub API + dashboard ────────
+  registry:
+    build:
+      context: .
+      dockerfile: registry/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SIGNALING_SECRET: ${SIGNALING_SECRET:-dev-secret-change-me}
+      API_KEYS_FILE: /etc/chatixia/api_keys.json
+      TURN_URL: ${TURN_URL:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      REGISTRY_PUBLIC_URL: ${REGISTRY_PUBLIC_URL:-http://localhost:8080}
+      HUB_DIST_DIR: /srv/hub
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ./api_keys.json:/etc/chatixia/api_keys.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/registry/agents"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ── Sidecar: WebRTC mesh peer + IPC bridge ────────────────────────────
+  sidecar:
+    build:
+      context: .
+      dockerfile: sidecar/Dockerfile
+    environment:
+      SIGNALING_URL: ws://registry:8080/ws
+      TOKEN_URL: http://registry:8080/api/token
+      API_KEY: ${API_KEY:-ak_dev_001}
+      IPC_SOCKET: /run/chatixia/sidecar.sock
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ipc-socket:/run/chatixia
+    depends_on:
+      registry:
+        condition: service_healthy
+
+  # ── Agent: Python AI agent ────────────────────────────────────────────
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    environment:
+      CHATIXIA_REGISTRY_URL: http://registry:8080
+      REGISTRY_URL: http://registry:8080
+      SIGNALING_URL: ws://registry:8080/ws
+      TOKEN_URL: http://registry:8080/api/token
+      API_KEY: ${API_KEY:-ak_dev_001}
+      IPC_SOCKET: /run/chatixia/sidecar.sock
+      SIDECAR_BINARY: chatixia-sidecar
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434/v1}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ipc-socket:/run/chatixia
+      - ./agent.yaml:/app/agent.yaml:ro
+    depends_on:
+      registry:
+        condition: service_healthy
+      sidecar:
+        condition: service_started
+
+  # ── coturn: TURN relay for NAT traversal ──────────────────────────────
+  # Enabled with: docker compose --profile turn up
+  coturn:
+    image: coturn/coturn:4
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+    command:
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:-dev-turn-secret}
+      - --realm=mesh.chatixia.local
+      - --total-quota=100
+      - --stale-nonce=600
+      - --no-multicast-peers
+    profiles:
+      - turn
+
+volumes:
+  ipc-socket:

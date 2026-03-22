@@ -1,4 +1,3 @@
-import pytest
 from chatixia.core.mesh_client import MeshMessage, MeshClient
 
 
@@ -75,13 +74,19 @@ class TestMeshClient:
 
     def test_on_registers_handler(self):
         client = MeshClient()
-        handler = lambda data: None
+
+        def handler(data):
+            return None
+
         client.on("message", handler)
         assert handler in client._handlers["message"]
 
     def test_on_wildcard_handler(self):
         client = MeshClient()
-        handler = lambda data: None
+
+        def handler(data):
+            return None
+
         client.on("*", handler)
         assert handler in client._handlers["*"]
 

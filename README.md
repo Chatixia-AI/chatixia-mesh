@@ -1,34 +1,38 @@
-# Chatixia Mesh — Agent-to-Agent Mesh Network
-
 <p align="center">
-  <strong>AI agents that discover, connect, and collaborate — peer to peer.</strong>
+  <strong>chatixia-mesh</strong><br/>
+  The decentralized agent mesh
 </p>
 
 <p align="center">
+  <a href="https://github.com/Chatixia-AI/chatixia-mesh/actions"><img src="https://img.shields.io/github/actions/workflow/status/Chatixia-AI/chatixia-mesh/ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI status"></a>
   <a href="https://github.com/Chatixia-AI/chatixia-mesh/actions"><img src="https://img.shields.io/github/actions/workflow/status/Chatixia-AI/chatixia-mesh/pages.yml?branch=main&style=for-the-badge&label=Pages" alt="Pages status"></a>
   <a href="https://github.com/Chatixia-AI/chatixia-mesh/releases"><img src="https://img.shields.io/github/v/release/Chatixia-AI/chatixia-mesh?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**Chatixia Mesh** is an agent-to-agent mesh network built on WebRTC DataChannels. Agents discover each other through a central registry, communicate directly over DTLS-encrypted peer-to-peer channels, and are monitored from a real-time dashboard. The registry is just the control plane — the product is the mesh.
+An agent-to-agent mesh network built on WebRTC. Agents discover each other through a registry, communicate directly over DTLS-encrypted peer-to-peer channels, and are monitored from a real-time dashboard. The registry handles signaling only — it never touches your data.
 
 <p align="center">
-  <a href="https://chatixia-ai.github.io/chatixia-mesh">Website</a> ·
+  <a href="https://chatixia-ai.web.app?utm_source=github&utm_medium=readme">Website</a> ·
+  <a href="https://chatixia-ai.github.io/chatixia-mesh">Documentation</a> ·
   <a href="docs/SYSTEM_DESIGN.md">Architecture</a> ·
   <a href="docs/COMPONENTS.md">Components</a> ·
   <a href="docs/ADR.md">ADRs</a> ·
-  <a href="docs/GLOSSARY.md">Glossary</a>
+  <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
 
-## Highlights
+---
 
-- **[WebRTC Mesh](docs/SYSTEM_DESIGN.md)** — agents connect peer-to-peer via DTLS-encrypted DataChannels. No message broker, no central relay.
-- **[Rust Sidecars](sidecar/)** — each agent gets a lightweight Rust binary (webrtc-rs) that handles signaling, ICE negotiation, and IPC bridging.
-- **[Python Agent Framework](agent/)** — scaffold, configure, and run agents with the `chatixia` CLI. Built-in skills, MCP integration, autonomous goals, and knowledge bases.
-- **[Invite-to-Join Security](docs/THREAT_MODEL.md)** — new agents pair via 6-digit invite codes and require admin approval before joining the mesh.
-- **[Hub Dashboard](hub/)** — real-time React dashboard for monitoring agents, approving peers, and dispatching tasks.
-- **[Skill Routing](docs/COMPONENTS.md)** — the registry routes task requests to the right agent based on declared skills.
-- **[A2A Protocol Support](docs/COMPONENTS.md)** — Agent-to-Agent discovery via `/.well-known/agent.json` and per-agent Agent Cards.
+## Why chatixia-mesh
+
+| | chatixia-mesh | Centralized frameworks |
+| --- | --- | --- |
+| **Data path** | P2P — DTLS-encrypted DataChannels between agents | All traffic routed through a central server |
+| **Agent runtime** | Sidecar pattern — WebRTC in Rust, agents write Python | Agents coupled to framework internals |
+| **Deployment** | Self-hosted first — no external dependencies, on-prem ready | Cloud-dependent or SaaS |
+| **Interop** | Open standards — Google A2A protocol, Anthropic MCP | Proprietary protocols |
+
+CrewAI, AutoGen, and LangGraph route all agent traffic through a central server. chatixia-mesh doesn't.
 
 ## How it works
 
@@ -58,12 +62,24 @@
 
 ## Key subsystems
 
-- **[Registry](registry/src/main.rs)** — Rust/axum signaling server, agent registry, task queue, and hub API. Serves the dashboard and exposes REST + WebSocket endpoints.
-- **[Sidecar](sidecar/src/main.rs)** — Rust/webrtc-rs mesh peer that manages WebRTC DataChannels and bridges messages to the Python agent over a Unix socket (JSON lines IPC).
-- **[Agent Framework](agent/chatixia/)** — Python package (`chatixia`) with CLI commands for scaffolding, validating, pairing, and running agents. Includes a skill system, mesh client, and LLM integration (Azure, OpenAI, Ollama).
-- **[Hub Dashboard](hub/src/App.tsx)** — React/Vite admin UI for monitoring agent health, approving pairing requests, and submitting tasks.
+| Component | Description |
+| --- | --- |
+| **[Registry](registry/src/main.rs)** | Rust/axum signaling server, agent registry, task queue, and hub API |
+| **[Sidecar](sidecar/src/main.rs)** | Rust/webrtc-rs mesh peer — WebRTC DataChannels + Unix socket IPC |
+| **[Agent Framework](agent/chatixia/)** | Python package (`chatixia`) — CLI, skills, mesh client, LLM integration |
+| **[Hub Dashboard](hub/src/App.tsx)** | React/Vite admin UI — agent health, approvals, task dispatch |
 
-## Install
+## Quick start
+
+```bash
+# Docker (recommended)
+docker compose up --build
+
+# Or install the CLI
+uv tool install chatixia
+```
+
+### From source
 
 **Prerequisites:** Rust 1.75+ · Python 3.12+ · Node.js 20+
 
@@ -78,7 +94,7 @@ cd agent && uv pip install -e . && cd ..
 cd hub && npm install && npm run build && cd ..
 ```
 
-## Quick start
+### Run
 
 ```bash
 # 1. Start the registry
@@ -96,13 +112,12 @@ chatixia pair 482901
 # 4. Run the agent
 chatixia run
 
-# 5. Open the Hub
-# → http://localhost:8080
+# 5. Open the Hub → http://localhost:8080
 ```
 
 ## Agent onboarding
 
-Chatixia Mesh uses an invite + approval flow to control who joins the network:
+chatixia-mesh uses an invite + approval flow to control who joins the network:
 
 1. An admin generates a 6-digit invite code (via hub or API)
 2. The new agent redeems the code: `chatixia pair <code>`
@@ -185,6 +200,7 @@ chatixia-mesh/
 | [COMPONENTS.md](docs/COMPONENTS.md) | Detailed reference of every module, struct, route, and env var |
 | [SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Architecture, protocols, auth flows |
 | [ADR.md](docs/ADR.md) | Architecture decision records |
+| [ROADMAP.md](docs/ROADMAP.md) | Product roadmap and competitive analysis |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | Security analysis and mitigations |
 | [GLOSSARY.md](docs/GLOSSARY.md) | Domain terminology |
 

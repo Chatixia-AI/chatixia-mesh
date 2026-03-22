@@ -34,13 +34,21 @@ impl SignalingState {
     /// Register a peer's WebSocket sender.
     pub fn add_peer(&self, peer_id: &str, tx: mpsc::UnboundedSender<String>) {
         self.peers.insert(peer_id.to_string(), tx);
-        info!("[SIG] peer registered: {} (total: {})", peer_id, self.peers.len());
+        info!(
+            "[SIG] peer registered: {} (total: {})",
+            peer_id,
+            self.peers.len()
+        );
     }
 
     /// Remove a peer.
     pub fn remove_peer(&self, peer_id: &str) {
         self.peers.remove(peer_id);
-        info!("[SIG] peer removed: {} (total: {})", peer_id, self.peers.len());
+        info!(
+            "[SIG] peer removed: {} (total: {})",
+            peer_id,
+            self.peers.len()
+        );
     }
 
     /// Get list of all connected peer IDs.
@@ -59,8 +67,7 @@ impl SignalingState {
         approved_peers: &HashSet<String>,
         legacy_peers: &HashSet<String>,
     ) {
-        let is_authorized =
-            |pid: &str| approved_peers.contains(pid) || legacy_peers.contains(pid);
+        let is_authorized = |pid: &str| approved_peers.contains(pid) || legacy_peers.contains(pid);
 
         match msg.msg_type.as_str() {
             "register" => {

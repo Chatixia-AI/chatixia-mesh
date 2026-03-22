@@ -3,13 +3,12 @@ import os
 import signal
 import socket
 
+import requests
 from dotenv import load_dotenv
 
-load_dotenv()
-
-import requests
-
 from chatixia.core.mesh_client import MeshClient
+
+load_dotenv()
 
 REGISTRY = os.environ.get("REGISTRY_URL", "http://localhost:8080")
 API_KEY = os.environ.get("API_KEY", "ak_dev_001")
@@ -24,7 +23,12 @@ def register_with_registry():
             "agent_id": AGENT_ID,
             "hostname": socket.gethostname(),
             "sidecar_peer_id": "agent-001",
-            "capabilities": {"skills": [], "mcp_servers": [], "goals_count": 0, "mode": "idle"},
+            "capabilities": {
+                "skills": [],
+                "mcp_servers": [],
+                "goals_count": 0,
+                "mode": "idle",
+            },
             "status": "online",
             "mode": "idle",
         },

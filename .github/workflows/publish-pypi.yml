@@ -1,0 +1,39 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write  # OIDC for PyPI trusted publisher
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'v')
+    environment: pypi
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match pyproject.toml version $PKG"
+            exit 1
+          fi
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: agent/dist/

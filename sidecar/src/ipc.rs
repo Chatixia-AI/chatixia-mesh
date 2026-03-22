@@ -23,7 +23,7 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
 use crate::mesh::MeshManager;
-use crate::protocol::{IpcMessage, MeshMessage, ipc_types};
+use crate::protocol::{ipc_types, IpcMessage, MeshMessage};
 
 /// Start the IPC server on a Unix domain socket.
 pub async fn serve(

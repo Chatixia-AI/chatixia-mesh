@@ -1,0 +1,12 @@
+target/
+hub/node_modules/
+hub/dist/
+agent/__pycache__/
+agent/*.egg-info/
+.git/
+.env
+*.md
+docs/
+site/
+.github/
+.claude/

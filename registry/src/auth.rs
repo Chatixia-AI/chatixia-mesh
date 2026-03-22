@@ -133,7 +133,10 @@ pub async fn exchange_token(
                 .issue_token(&entry.peer_id, &entry.role)
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            info!("[AUTH] issued token for peer_id={} (api_key)", entry.peer_id);
+            info!(
+                "[AUTH] issued token for peer_id={} (api_key)",
+                entry.peer_id
+            );
 
             return Ok(Json(serde_json::json!({
                 "token": token,
@@ -155,7 +158,10 @@ pub async fn exchange_token(
             .issue_token(&entry.peer_id, "agent")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        info!("[AUTH] issued token for peer_id={} (device_token)", entry.peer_id);
+        info!(
+            "[AUTH] issued token for peer_id={} (device_token)",
+            entry.peer_id
+        );
 
         return Ok(Json(serde_json::json!({
             "token": token,
