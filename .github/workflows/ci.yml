@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  # ── Rust ────────────────────────────────────────────────────────
+  rust-lint:
+    name: Rust Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  rust-test:
+    name: Rust Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test
+        run: cargo test --workspace
+
+  # ── Python ──────────────────────────────────────────────────────
+  python-lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: ruff check
+        run: uvx ruff@0.15.0 check .
+      - name: ruff format
+        run: uvx ruff@0.15.0 format --check .
+
+  python-test:
+    name: Python Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: pytest
+        run: uv run pytest -v
+
+  # ── Hub (TypeScript / React) ────────────────────────────────────
+  hub:
+    name: Hub Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: hub/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: tsc --noEmit
+        run: pnpm exec tsc --noEmit
+      - name: Build
+        run: pnpm build
+
+  # ── Python version-bump check ──────────────────────────────────
+  python-version-check:
+    name: Version Bump Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check version bump when agent/ changed
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          # Did any non-test Python/toml files in agent/ change?
+          CHANGED=$(git diff --name-only "$BASE"...HEAD -- 'agent/chatixia/**' 'agent/pyproject.toml' | grep -v '__pycache__' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No agent source changes — skipping version check."
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$CHANGED"
+          # Compare versions
+          OLD=$(git show "$BASE":agent/pyproject.toml | python3 -c "import sys,tomllib; print(tomllib.load(sys.stdin.buffer)['project']['version'])")
+          NEW=$(python3 -c "import tomllib; print(tomllib.load(open('agent/pyproject.toml','rb'))['project']['version'])")
+          if [ "$OLD" = "$NEW" ]; then
+            echo "::warning::agent/ source files changed but version is still $OLD. Bump the version in agent/pyproject.toml before merging."
+            exit 1
+          fi
+          echo "Version bumped: $OLD → $NEW ✓"
+
+  # ── Docker build validation ─────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        target: [registry, sidecar, agent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.target }}/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

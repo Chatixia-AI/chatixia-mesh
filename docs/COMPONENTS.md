@@ -16,7 +16,7 @@ chatixia-mesh/
 ├── infra/              # Nginx + coturn configs
 ├── site/               # GitHub Pages documentation site
 ├── docs/               # Documentation
-├── .github/workflows/  # CI: GitHub Pages deployment
+├── .github/workflows/  # CI, PyPI publishing, GitHub Pages deployment
 ├── docker-compose.yml  # Full stack: registry + sidecar + agent (+ coturn)
 ├── .dockerignore       # Docker build exclusions
 ├── Cargo.toml          # Workspace manifest (registry + sidecar)
@@ -394,3 +394,35 @@ Static GitHub Pages documentation site using the Atmospheric Luminescence design
 ### Deployment
 
 GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` directory to GitHub Pages on push to `main` (when `site/**` files change) or manual dispatch.
+
+---
+
+## CI/CD (`.github/workflows/`)
+
+| Workflow | Trigger | Purpose |
+| -------- | ------- | ------- |
+| `ci.yml` | Push to `main`, PRs to `main` | Rust lint/test, Python lint/test, Hub build, Docker build (PRs), **version bump check** (PRs) |
+| `publish-pypi.yml` | GitHub Release (`v*` tag) | Build and publish `chatixia` package to PyPI via OIDC trusted publisher |
+| `pages.yml` | Push to `main` (`site/**`), manual | Deploy documentation site to GitHub Pages |
+
+### CI Jobs (`ci.yml`)
+
+| Job | Scope | Details |
+| --- | ----- | ------- |
+| `rust-lint` | `Cargo.toml` workspace | `cargo fmt --check` + `cargo clippy` |
+| `rust-test` | `Cargo.toml` workspace | `cargo test --workspace` |
+| `python-lint` | `agent/` | Ruff check + format via `uvx` |
+| `python-test` | `agent/` | `uv sync --all-groups` + `uv run pytest` |
+| `hub` | `hub/` | `pnpm install` + `tsc --noEmit` + `pnpm build` |
+| `python-version-check` | `agent/` (PRs only) | Fails if `agent/chatixia/**` or `agent/pyproject.toml` changed but version wasn't bumped |
+| `docker` | All Dockerfiles (PRs only) | Matrix build of registry, sidecar, agent images |
+
+### PyPI Publish (`publish-pypi.yml`)
+
+Triggered by creating a GitHub Release with a `v*` tag. Steps:
+
+1. Verifies the git tag matches `pyproject.toml` version
+2. Builds the package with `uv build`
+3. Publishes to PyPI via OIDC trusted publisher (no API token)
+
+**Required setup:** Configure PyPI trusted publisher at pypi.org → project → Publishing (Owner: `Chatixia-AI`, Repo: `chatixia-mesh`, Workflow: `publish-pypi.yml`, Environment: `pypi`).
