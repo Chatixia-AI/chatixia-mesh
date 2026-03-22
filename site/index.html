@@ -342,6 +342,112 @@
     pre .comment { color: #718096; }
     pre .cmd { color: #00cffc; }
 
+    /* ── Architecture Diagram ── */
+    .arch-diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      padding: 1.5rem 1rem;
+      min-width: 420px;
+    }
+    .arch-node {
+      border: 1.5px solid var(--outline);
+      border-radius: var(--radius-md);
+      padding: 0.8rem 1.4rem;
+      text-align: center;
+      background: var(--surface);
+      min-width: 140px;
+    }
+    .arch-node-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--on-surface);
+    }
+    .arch-node-lang {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--on-surface-variant);
+      margin-top: 0.15rem;
+    }
+    .arch-node-parts {
+      display: flex;
+      gap: 0.6rem;
+      justify-content: center;
+      margin-top: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .arch-node-parts span {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      background: var(--primary);
+      color: var(--on-primary);
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+    }
+    .arch-registry { border-color: var(--primary); }
+    .arch-sidecar { border-color: var(--secondary); }
+    .arch-agent { border-color: var(--tertiary); }
+    .arch-connectors {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      max-width: 500px;
+      padding: 0;
+    }
+    .arch-conn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .arch-conn-line {
+      width: 1.5px;
+      height: 24px;
+      background: var(--outline);
+    }
+    .arch-conn-label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--on-surface-variant);
+      margin-top: 4px;
+    }
+    .arch-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      justify-content: center;
+    }
+    .arch-link {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .arch-arrow {
+      font-size: 0.85rem;
+      color: var(--secondary);
+      font-weight: 700;
+    }
+    .arch-link-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .arch-link-label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--on-surface);
+      font-weight: 500;
+    }
+    .arch-link-sub {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--on-surface-variant);
+    }
+    .arch-link-spacer {
+      width: 160px;
+    }
+
     /* ── Protocol Layers ── */
     .layers {
       display: grid;
@@ -648,23 +754,54 @@
     </div>
   </div>
 
-  <!-- ASCII Diagram -->
-  <div class="glass-card" style="margin-top: 2rem;">
-    <pre style="background: transparent; color: var(--on-surface); padding: 1rem 0; margin: 0;">
-<span class="comment">                    ┌──────────────────────────────────────────┐</span>
-<span class="comment">                    │         Registry Server (Rust)            │</span>
-<span class="comment">                    │  Signaling │ Agent Registry │ Hub API     │</span>
-<span class="comment">                    └─────┬──────┴───────────────┴──────┬───────┘</span>
-<span class="comment">                          │ WebSocket (SDP/ICE)        │ HTTP</span>
-<span class="comment">                   ┌──────┴──────┐              ┌──────┴──────┐</span>
-<span class="comment">                   │  Sidecar A  │◄── WebRTC ──►│  Sidecar B  │</span>
-<span class="comment">                   │   (Rust)    │  DataChannel  │   (Rust)    │</span>
-<span class="comment">                   └──────┬──────┘  DTLS encrypt └──────┬──────┘</span>
-<span class="comment">                          │ IPC (Unix socket)          │ IPC</span>
-<span class="comment">                   ┌──────┴──────┐              ┌──────┴──────┐</span>
-<span class="comment">                   │  Agent A    │              │  Agent B    │</span>
-<span class="comment">                   │  (Python)   │              │  (Python)   │</span>
-<span class="comment">                   └─────────────┘              └─────────────┘</span></pre>
+  <!-- Architecture Diagram -->
+  <div class="glass-card" style="margin-top: 2rem; overflow-x: auto;">
+    <div class="arch-diagram">
+      <div class="arch-node arch-registry">
+        <div class="arch-node-title">Registry Server</div>
+        <div class="arch-node-lang">Rust · axum</div>
+        <div class="arch-node-parts">
+          <span>Signaling</span><span>Agent Registry</span><span>Hub API</span>
+        </div>
+      </div>
+      <div class="arch-connectors">
+        <div class="arch-conn"><span class="arch-conn-label">WebSocket (SDP/ICE)</span><div class="arch-conn-line"></div></div>
+        <div class="arch-conn"><span class="arch-conn-label">HTTP</span><div class="arch-conn-line"></div></div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-node arch-sidecar">
+          <div class="arch-node-title">Sidecar A</div>
+          <div class="arch-node-lang">Rust · webrtc-rs</div>
+        </div>
+        <div class="arch-link">
+          <span class="arch-arrow">◄</span>
+          <div class="arch-link-body">
+            <span class="arch-link-label">WebRTC DataChannel</span>
+            <span class="arch-link-sub">DTLS encrypted</span>
+          </div>
+          <span class="arch-arrow">►</span>
+        </div>
+        <div class="arch-node arch-sidecar">
+          <div class="arch-node-title">Sidecar B</div>
+          <div class="arch-node-lang">Rust · webrtc-rs</div>
+        </div>
+      </div>
+      <div class="arch-connectors">
+        <div class="arch-conn"><span class="arch-conn-label">IPC (Unix socket)</span><div class="arch-conn-line"></div></div>
+        <div class="arch-conn"><span class="arch-conn-label">IPC (Unix socket)</span><div class="arch-conn-line"></div></div>
+      </div>
+      <div class="arch-row">
+        <div class="arch-node arch-agent">
+          <div class="arch-node-title">Agent A</div>
+          <div class="arch-node-lang">Python · chatixia</div>
+        </div>
+        <div class="arch-link-spacer"></div>
+        <div class="arch-node arch-agent">
+          <div class="arch-node-title">Agent B</div>
+          <div class="arch-node-lang">Python · chatixia</div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
