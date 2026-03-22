@@ -156,6 +156,8 @@ async def run_agent(config: AgentConfig) -> None:
                 f"{registry}/api/hub/heartbeat",
                 json={
                     "agent_id": agent_id,
+                    "hostname": socket.gethostname(),
+                    "sidecar_peer_id": f"{agent_id}-sidecar",
                     "skill_names": config.skills_builtin,
                 },
                 headers={"x-api-key": api_key},
