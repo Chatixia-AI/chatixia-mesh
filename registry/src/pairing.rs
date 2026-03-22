@@ -415,3 +415,168 @@ pub async fn revoke_handler(
             .into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_code_format() {
+        let state = PairingState::new();
+        let code = state.generate_code("admin");
+        assert_eq!(code.len(), 6);
+        assert!(code.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_consume_valid_code() {
+        let state = PairingState::new();
+        let code = state.generate_code("admin");
+        let creator = state.consume_code(&code).unwrap();
+        assert_eq!(creator, "admin");
+    }
+
+    #[test]
+    fn test_consume_code_twice_fails() {
+        let state = PairingState::new();
+        let code = state.generate_code("admin");
+        assert!(state.consume_code(&code).is_some());
+        assert!(state.consume_code(&code).is_none());
+    }
+
+    #[test]
+    fn test_consume_invalid_code() {
+        let state = PairingState::new();
+        assert!(state.consume_code("999999").is_none());
+    }
+
+    #[test]
+    fn test_pairing_full_flow() {
+        let state = PairingState::new();
+        // Generate code
+        let code = state.generate_code("admin");
+        // Consume code
+        let _creator = state.consume_code(&code).unwrap();
+        // Create pending entry
+        let entry = state.create_pending("my-agent");
+        assert_eq!(entry.status, "pending_approval");
+        assert!(entry.device_token.is_empty());
+        // Approve
+        let approved = state.approve(&entry.id).unwrap();
+        assert_eq!(approved.status, "approved");
+        assert!(!approved.device_token.is_empty());
+        // Validate device token
+        let validated = state.validate_device_token(&approved.device_token).unwrap();
+        assert_eq!(validated.peer_id, approved.peer_id);
+    }
+
+    #[test]
+    fn test_approve_generates_device_token() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        let approved = state.approve(&entry.id).unwrap();
+        assert!(approved.device_token.starts_with("dt_"));
+        // "dt_" (3) + 32 hex = 35 total
+        assert_eq!(approved.device_token.len(), 35);
+    }
+
+    #[test]
+    fn test_reject_pending() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        let rejected = state.reject(&entry.id).unwrap();
+        assert_eq!(rejected.status, "rejected");
+    }
+
+    #[test]
+    fn test_revoke_approved() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        state.approve(&entry.id).unwrap();
+        let revoked = state.revoke(&entry.id).unwrap();
+        assert_eq!(revoked.status, "revoked");
+    }
+
+    #[test]
+    fn test_cannot_approve_rejected() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        state.reject(&entry.id).unwrap();
+        assert!(state.approve(&entry.id).is_none());
+    }
+
+    #[test]
+    fn test_cannot_revoke_pending() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        assert!(state.revoke(&entry.id).is_none());
+    }
+
+    #[test]
+    fn test_validate_device_token_revoked() {
+        let state = PairingState::new();
+        let entry = state.create_pending("test-agent");
+        let approved = state.approve(&entry.id).unwrap();
+        let token = approved.device_token.clone();
+        state.revoke(&entry.id).unwrap();
+        assert!(state.validate_device_token(&token).is_none());
+    }
+
+    #[test]
+    fn test_approved_peer_ids() {
+        let state = PairingState::new();
+        let e1 = state.create_pending("agent-a");
+        let e2 = state.create_pending("agent-b");
+        let _e3 = state.create_pending("agent-c"); // stays pending
+        state.approve(&e1.id).unwrap();
+        state.approve(&e2.id).unwrap();
+        let ids = state.approved_peer_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&e1.peer_id));
+        assert!(ids.contains(&e2.peer_id));
+    }
+
+    #[test]
+    fn test_rate_limit_allows_5() {
+        let state = PairingState::new();
+        for _ in 0..5 {
+            assert!(state.check_rate_limit("10.0.0.1"));
+        }
+    }
+
+    #[test]
+    fn test_rate_limit_blocks_6th() {
+        let state = PairingState::new();
+        for _ in 0..5 {
+            state.check_rate_limit("10.0.0.2");
+        }
+        assert!(!state.check_rate_limit("10.0.0.2"));
+    }
+
+    #[test]
+    fn test_device_token_format() {
+        let token = generate_device_token();
+        assert!(token.starts_with("dt_"));
+        assert_eq!(token.len(), 35); // "dt_" + 32 hex
+        assert!(token[3..].chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_peer_id_format() {
+        let pid = generate_peer_id();
+        assert!(pid.starts_with("agent-"));
+        assert_eq!(pid.len(), 12); // "agent-" + 6 hex
+        assert!(pid[6..].chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_list_pending_filters() {
+        let state = PairingState::new();
+        let e1 = state.create_pending("a");
+        let e2 = state.create_pending("b");
+        state.approve(&e1.id).unwrap();
+        let pending = state.list_pending();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, e2.id);
+    }
+}

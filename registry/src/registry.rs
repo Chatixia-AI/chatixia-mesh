@@ -282,3 +282,93 @@ pub async fn heartbeat(
         "pending_tasks": pending
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_agent(id: &str, skills: Vec<String>, health: &str) -> AgentRecord {
+        AgentRecord {
+            info: AgentInfo {
+                agent_id: id.to_string(),
+                hostname: "localhost".into(),
+                ip: "127.0.0.1".into(),
+                port: default_port(),
+                sidecar_peer_id: String::new(),
+                capabilities: AgentCapabilities {
+                    skills,
+                    ..Default::default()
+                },
+                status: "running".into(),
+                mode: "auto".into(),
+            },
+            health: health.to_string(),
+            registered_at: "2025-01-01T00:00:00Z".into(),
+            last_heartbeat: "2025-01-01T00:00:00Z".into(),
+            last_heartbeat_epoch: epoch_now(),
+        }
+    }
+
+    #[test]
+    fn test_new_registry_is_empty() {
+        let reg = RegistryState::new();
+        assert!(reg.list().is_empty());
+    }
+
+    #[test]
+    fn test_register_and_list() {
+        let reg = RegistryState::new();
+        let a1 = make_agent("a1", vec!["search".into()], "active");
+        let a2 = make_agent("a2", vec!["chat".into()], "active");
+        reg.agents.insert("a1".into(), a1);
+        reg.agents.insert("a2".into(), a2);
+        assert_eq!(reg.list().len(), 2);
+    }
+
+    #[test]
+    fn test_get_existing_agent() {
+        let reg = RegistryState::new();
+        let a = make_agent("a1", vec![], "active");
+        reg.agents.insert("a1".into(), a);
+        let found = reg.get("a1").unwrap();
+        assert_eq!(found.info.agent_id, "a1");
+    }
+
+    #[test]
+    fn test_get_missing_agent() {
+        let reg = RegistryState::new();
+        assert!(reg.get("nope").is_none());
+    }
+
+    #[test]
+    fn test_find_by_skill_filters_active_only() {
+        let reg = RegistryState::new();
+        reg.agents.insert("a1".into(), make_agent("a1", vec!["search".into()], "active"));
+        reg.agents.insert("a2".into(), make_agent("a2", vec!["search".into()], "offline"));
+        let results = reg.find_by_skill("search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].info.agent_id, "a1");
+    }
+
+    #[test]
+    fn test_find_by_skill_no_match() {
+        let reg = RegistryState::new();
+        reg.agents.insert("a1".into(), make_agent("a1", vec!["chat".into()], "active"));
+        assert!(reg.find_by_skill("search").is_empty());
+    }
+
+    #[test]
+    fn test_agent_info_default_port() {
+        let info: AgentInfo = serde_json::from_str(r#"{"agent_id":"x","hostname":"h"}"#).unwrap();
+        assert_eq!(info.port, 8000);
+    }
+
+    #[test]
+    fn test_agent_capabilities_default() {
+        let caps = AgentCapabilities::default();
+        assert!(caps.skills.is_empty());
+        assert!(caps.mcp_servers.is_empty());
+        assert_eq!(caps.goals_count, 0);
+        assert_eq!(caps.mode, "");
+    }
+}

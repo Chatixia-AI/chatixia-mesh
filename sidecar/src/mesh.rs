@@ -114,3 +114,37 @@ impl MeshManager {
         self.channels.contains_key(peer_id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_mesh_manager() {
+        let mgr = MeshManager::new("local-1".into());
+        assert_eq!(mgr.local_peer_id, "local-1");
+        assert!(mgr.connected_peers().is_empty());
+    }
+
+    #[test]
+    fn test_connected_peers_empty() {
+        let mgr = MeshManager::new("local-2".into());
+        let peers = mgr.connected_peers();
+        assert!(peers.is_empty());
+    }
+
+    #[test]
+    fn test_is_connected_empty() {
+        let mgr = MeshManager::new("local-3".into());
+        assert!(!mgr.is_connected("nonexistent"));
+        assert!(!mgr.is_connected(""));
+    }
+
+    #[test]
+    fn test_remove_nonexistent_peer() {
+        let mgr = MeshManager::new("local-4".into());
+        // Should not panic when removing a peer that was never added.
+        mgr.remove_peer("ghost-peer");
+        assert!(mgr.connected_peers().is_empty());
+    }
+}

@@ -188,3 +188,93 @@ pub async fn update_task(
         Json(serde_json::json!({ "error": "not found" }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_task(id: &str, skill: &str, target: &str, state: &str) -> Task {
+        let now = epoch_now();
+        Task {
+            id: id.to_string(),
+            skill: skill.to_string(),
+            target_agent_id: target.to_string(),
+            source_agent_id: "src".into(),
+            assigned_agent_id: String::new(),
+            payload: serde_json::json!({}),
+            state: state.to_string(),
+            result: String::new(),
+            error: String::new(),
+            created_at: now,
+            updated_at: now,
+            ttl: 300,
+        }
+    }
+
+    #[test]
+    fn test_new_hub_is_empty() {
+        let hub = HubState::new();
+        let tasks: Vec<Task> = hub.tasks.iter().map(|e| e.value().clone()).collect();
+        assert!(tasks.is_empty());
+    }
+
+    #[test]
+    fn test_submit_and_get_task() {
+        let hub = HubState::new();
+        let task = make_task("t1", "search", "a1", "pending");
+        hub.tasks.insert("t1".into(), task);
+        assert!(hub.tasks.get("t1").is_some());
+        assert_eq!(hub.tasks.get("t1").unwrap().skill, "search");
+    }
+
+    #[test]
+    fn test_get_pending_by_agent_id() {
+        let hub = HubState::new();
+        hub.tasks.insert("t1".into(), make_task("t1", "", "agent-1", "pending"));
+        let result = hub.get_pending_for_agent("agent-1", &[]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "t1");
+    }
+
+    #[test]
+    fn test_get_pending_by_skill() {
+        let hub = HubState::new();
+        hub.tasks.insert("t1".into(), make_task("t1", "search", "", "pending"));
+        let result = hub.get_pending_for_agent("any-agent", &["search".to_string()]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "t1");
+    }
+
+    #[test]
+    fn test_get_pending_marks_assigned() {
+        let hub = HubState::new();
+        hub.tasks.insert("t1".into(), make_task("t1", "search", "", "pending"));
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert_eq!(result[0].state, "assigned");
+        // Verify it's also updated in the map
+        assert_eq!(hub.tasks.get("t1").unwrap().state, "assigned");
+    }
+
+    #[test]
+    fn test_get_pending_skips_completed() {
+        let hub = HubState::new();
+        hub.tasks.insert("t1".into(), make_task("t1", "search", "a1", "completed"));
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_default_ttl() {
+        assert_eq!(default_ttl(), 300);
+    }
+
+    #[test]
+    fn test_task_serialization() {
+        let task = make_task("t1", "search", "a1", "pending");
+        let json = serde_json::to_value(&task).unwrap();
+        assert_eq!(json["id"], "t1");
+        assert_eq!(json["skill"], "search");
+        assert_eq!(json["state"], "pending");
+        assert_eq!(json["target_agent_id"], "a1");
+    }
+}
