@@ -1,4 +1,9 @@
-from chatixia.core.mesh_client import MeshMessage, MeshClient
+import os
+import stat
+
+import pytest
+
+from chatixia.core.mesh_client import MeshMessage, MeshClient, _resolve_sidecar_binary
 
 
 class TestMeshMessage:
@@ -138,3 +143,63 @@ class TestPeerTracking:
         peers = client.peers
         peers.add("p2")
         assert "p2" not in client._peers
+
+
+class TestResolveSidecarBinary:
+    def test_absolute_path_exists(self, tmp_path):
+        binary = tmp_path / "chatixia-sidecar"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
+        result = _resolve_sidecar_binary(str(binary))
+        assert result == str(binary.resolve())
+
+    def test_absolute_path_not_found_raises(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("SIDECAR_BINARY", raising=False)
+        # Ensure nothing in PATH matches
+        monkeypatch.setenv("PATH", str(tmp_path))
+        with pytest.raises(RuntimeError, match="not found"):
+            _resolve_sidecar_binary("/nonexistent/chatixia-sidecar")
+
+    def test_env_var_override(self, tmp_path, monkeypatch):
+        binary = tmp_path / "my-sidecar"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
+        monkeypatch.setenv("SIDECAR_BINARY", str(binary))
+        # Pass a non-existent configured path
+        result = _resolve_sidecar_binary("/nonexistent/sidecar")
+        assert result == str(binary.resolve())
+
+    def test_env_var_path_lookup(self, tmp_path, monkeypatch):
+        """SIDECAR_BINARY as bare name found in PATH."""
+        binary = tmp_path / "custom-sidecar"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
+        monkeypatch.setenv("PATH", str(tmp_path))
+        monkeypatch.setenv("SIDECAR_BINARY", "custom-sidecar")
+        result = _resolve_sidecar_binary("/nonexistent/sidecar")
+        assert result.endswith("custom-sidecar")
+
+    def test_path_lookup_bare_name(self, tmp_path, monkeypatch):
+        binary = tmp_path / "chatixia-sidecar"
+        binary.write_text("#!/bin/sh\n")
+        binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
+        monkeypatch.delenv("SIDECAR_BINARY", raising=False)
+        monkeypatch.setenv("PATH", str(tmp_path))
+        result = _resolve_sidecar_binary("chatixia-sidecar")
+        assert result.endswith("chatixia-sidecar")
+
+    def test_not_executable_skipped(self, tmp_path, monkeypatch):
+        """A file that exists but isn't executable should be skipped."""
+        binary = tmp_path / "chatixia-sidecar"
+        binary.write_text("not executable")
+        binary.chmod(0o644)
+        monkeypatch.delenv("SIDECAR_BINARY", raising=False)
+        monkeypatch.setenv("PATH", "")
+        with pytest.raises(RuntimeError, match="not found"):
+            _resolve_sidecar_binary(str(binary))
+
+    def test_error_message_contains_install_instructions(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("SIDECAR_BINARY", raising=False)
+        monkeypatch.setenv("PATH", str(tmp_path))
+        with pytest.raises(RuntimeError, match="cargo install"):
+            _resolve_sidecar_binary("nonexistent-binary")

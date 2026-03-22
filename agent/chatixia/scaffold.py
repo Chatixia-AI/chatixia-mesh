@@ -25,8 +25,9 @@ prompt: |
   You can collaborate with other agents using delegate and mesh_send.
 
 # Sidecar — the Rust WebRTC peer that bridges you to the mesh
+# Install: cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar
 sidecar:
-  binary: ./target/release/chatixia-sidecar
+  binary: chatixia-sidecar
   api_key: ak_dev_001
   socket: /tmp/chatixia-{name}.sock
 

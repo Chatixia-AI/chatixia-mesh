@@ -108,6 +108,7 @@ GET  /.well-known/agent.json          # A2A discovery — list all active agents
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `PORT` | `8080` | HTTP listen port |
 | `SIGNALING_SECRET` | `dev-secret-change-me` | JWT signing secret |
 | `API_KEYS_FILE` | `api_keys.json` | Path to API key definitions |
 | `TURN_URL` | _(none)_ | Optional TURN server URL |
@@ -170,11 +171,11 @@ AI agent framework with mesh networking. Published as the `chatixia` PyPI packag
 
 ### CLI (`chatixia`)
 
-Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
+Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 
 | Command | Description |
 |---------|-------------|
-| `chatixia init [name] [--role researcher\|analyst\|coordinator\|worker]` | Scaffold a new agent with optional role template (`agent.yaml`, `.env.example`, `.gitignore`) |
+| `chatixia init [name] [-d dir]` | Scaffold a new agent into a `<name>/` subdirectory (`agent.yaml`, `.env.example`, `.gitignore`). Use `-d .` to scaffold in the current directory. |
 | `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat, execute tasks |
 | `chatixia validate [manifest]` | Validate manifest and print summary |
 | `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
@@ -207,7 +208,7 @@ Installed via `pip install chatixia`. Entry point: `chatixia.cli:main`.
 | `AgentConfig` | `chatixia.config` | Dataclass: agent name, role, description, registry URL, sidecar config, LLM provider, skills, runtime settings |
 | `SidecarConfig` | `chatixia.config` | Dataclass: `binary`, `api_key`, `socket` |
 | `MeshMessage` | `chatixia.core.mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
-| `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response, tracks connected peers |
+| `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response, tracks connected peers. Sidecar binary resolved via: configured path → `SIDECAR_BINARY` env var → PATH lookup. |
 | `SKILL_HANDLERS` | `chatixia.runner` | Dict mapping skill name → sync or async handler function; used by heartbeat + P2P task execution |
 
 ### Skills

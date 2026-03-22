@@ -51,3 +51,15 @@ class TestWriteScaffold:
         content = (tmp_path / "agent.yaml").read_text()
         assert "name: custom-name" in content
         assert "chatixia-custom-name" in content  # socket name
+
+    def test_sidecar_binary_is_bare_name(self, tmp_path):
+        """Scaffold should use bare 'chatixia-sidecar' (PATH lookup), not a repo-relative path."""
+        write_scaffold("test-agent", str(tmp_path))
+        content = (tmp_path / "agent.yaml").read_text()
+        assert "binary: chatixia-sidecar" in content
+        assert "./target/release/" not in content
+
+    def test_scaffold_contains_install_comment(self, tmp_path):
+        write_scaffold("test-agent", str(tmp_path))
+        content = (tmp_path / "agent.yaml").read_text()
+        assert "cargo install" in content

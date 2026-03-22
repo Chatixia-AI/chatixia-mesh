@@ -9,8 +9,9 @@ provider: azure
 model: gpt-4o
 
 # Sidecar configuration
+# Install: cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar
 sidecar:
-  binary: ./target/release/chatixia-sidecar
+  binary: chatixia-sidecar
   api_key: ak_dev_001
   socket: /tmp/chatixia-sidecar.sock
 

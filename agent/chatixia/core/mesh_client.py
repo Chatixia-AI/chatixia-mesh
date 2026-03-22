@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,6 +52,47 @@ class MeshMessage:
         )
 
 
+def _resolve_sidecar_binary(configured: str) -> str:
+    """Resolve the sidecar binary path.
+
+    Resolution order:
+    1. Configured path (if absolute and exists)
+    2. SIDECAR_BINARY env var
+    3. PATH lookup
+    Raises RuntimeError with install instructions if not found.
+    """
+    # 1. Explicit absolute or relative path that exists on disk
+    p = Path(configured).expanduser()
+    if p.exists() and os.access(p, os.X_OK):
+        return str(p.resolve())
+
+    # 2. Env var override
+    env_binary = os.environ.get("SIDECAR_BINARY")
+    if env_binary:
+        ep = Path(env_binary).expanduser()
+        if ep.exists() and os.access(ep, os.X_OK):
+            return str(ep.resolve())
+
+    # 3. Search PATH (handles bare name like "chatixia-sidecar")
+    found = shutil.which(configured)
+    if found:
+        return found
+    if env_binary:
+        found = shutil.which(env_binary)
+        if found:
+            return found
+
+    raise RuntimeError(
+        f"Sidecar binary '{configured}' not found.\n"
+        "Install it with one of:\n"
+        "  cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar\n"
+        "Or build from source:\n"
+        "  git clone https://github.com/Chatixia-AI/chatixia-mesh && cd chatixia-mesh\n"
+        "  cargo build --release -p chatixia-sidecar\n"
+        "Then either add target/release/ to PATH or set sidecar.binary in agent.yaml"
+    )
+
+
 class MeshClient:
     """Async client for communicating with the Rust sidecar over IPC."""
 
@@ -84,7 +126,23 @@ class MeshClient:
         for _ in range(50):  # 5 seconds
             if Path(self._socket_path).exists():
                 break
+            # Check if sidecar exited early
+            if self._sidecar_proc and self._sidecar_proc.poll() is not None:
+                stderr = (self._sidecar_proc.stderr.read() or b"").decode().strip()
+                raise RuntimeError(
+                    f"Sidecar exited with code {self._sidecar_proc.returncode}"
+                    + (f": {stderr}" if stderr else "")
+                )
             await asyncio.sleep(0.1)
+
+        if not Path(self._socket_path).exists():
+            stderr = ""
+            if self._sidecar_proc and self._sidecar_proc.poll() is not None:
+                stderr = (self._sidecar_proc.stderr.read() or b"").decode().strip()
+            raise RuntimeError(
+                f"Sidecar did not create socket at {self._socket_path} within 5s"
+                + (f": {stderr}" if stderr else "")
+            )
 
         # Connect to sidecar IPC socket
         self._reader, self._writer = await asyncio.open_unix_connection(
@@ -103,18 +161,20 @@ class MeshClient:
 
     async def _spawn_sidecar(self) -> None:
         """Spawn the Rust sidecar process."""
+        binary = _resolve_sidecar_binary(self._sidecar_binary)
         env = os.environ.copy()
         env["IPC_SOCKET"] = self._socket_path
 
         self._sidecar_proc = subprocess.Popen(
-            [self._sidecar_binary],
+            [binary],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         logger.info(
-            "sidecar spawned (pid=%d, socket=%s)",
+            "sidecar spawned (pid=%d, binary=%s, socket=%s)",
             self._sidecar_proc.pid,
+            binary,
             self._socket_path,
         )
 

@@ -108,8 +108,11 @@ def _cmd_init(args: argparse.Namespace) -> int:
     """Execute the ``init`` subcommand."""
     from chatixia.scaffold import write_scaffold
 
+    # If no explicit -d given, create a subdirectory named after the agent
+    directory = args.directory if args.directory != "." else args.name
+
     try:
-        write_scaffold(args.name, args.directory)
+        write_scaffold(args.name, directory)
         return 0
     except FileExistsError as exc:
         print(f"Error: {exc}", file=sys.stderr)

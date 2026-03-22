@@ -52,6 +52,13 @@ async def run_agent(config: AgentConfig) -> None:
     os.environ.setdefault("CHATIXIA_AGENT_ID", agent_id)
     os.environ.setdefault("API_KEY", api_key)
 
+    # Derive sidecar signaling/token URLs from registry URL so the sidecar
+    # connects to the correct registry even when the port is non-default.
+    ws_scheme = "wss" if registry.startswith("https") else "ws"
+    ws_base = registry.replace("https://", "").replace("http://", "")
+    os.environ.setdefault("SIGNALING_URL", f"{ws_scheme}://{ws_base}/ws")
+    os.environ.setdefault("TOKEN_URL", f"{registry}/api/token")
+
     # 1. Register with registry
     _register(registry, api_key, agent_id, config)
     print(f"Registered as {agent_id}")

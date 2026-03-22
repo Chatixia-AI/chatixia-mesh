@@ -71,15 +71,78 @@ CrewAI, AutoGen, and LangGraph route all agent traffic through a central server.
 
 ## Quick start
 
-```bash
-# Docker (recommended)
-docker compose up --build
+### Docker (recommended)
 
-# Or install the CLI
+```bash
+docker compose up --build
+# Hub dashboard → http://localhost:8080
+```
+
+### Install without Docker
+
+**Prerequisites:** [Rust](https://rustup.rs/) · Python 3.12+ · [uv](https://docs.astral.sh/uv/)
+
+```bash
+# 1. Install the sidecar (Rust WebRTC peer — goes into ~/.cargo/bin/)
+cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar
+
+# 2. Install the registry (Rust signaling server)
+cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-registry
+
+# 3. Install the Python agent CLI
 uv tool install chatixia
 ```
 
+### Run
+
+```bash
+# 1. Start the registry (use PORT to change the default 8080)
+chatixia-registry
+# → Listening on 0.0.0.0:8080
+
+# 2. Scaffold a new agent (creates a directory)
+chatixia init my-weather-bot
+cd my-weather-bot
+cp .env.example .env          # fill in your LLM provider keys
+
+# 3. Pair with the mesh (get an invite code from an admin)
+chatixia pair 482901
+
+# 4. Run the agent
+chatixia run
+
+# 5. Open the Hub → http://localhost:8080
+```
+
+### Multi-device setup
+
+Run agents across multiple machines (e.g., laptop + Raspberry Pi). The registry runs on one machine; agents on each device point to it.
+
+```bash
+# ── Machine A (registry host) ─────────────────────────────
+chatixia-registry                    # listens on 0.0.0.0:8080
+
+chatixia init agent-a
+cd agent-a
+# edit agent.yaml → registry: "http://localhost:8080"
+chatixia run
+
+# ── Machine B (e.g., Raspberry Pi) ────────────────────────
+# Install Rust + sidecar + chatixia CLI (same as above)
+
+chatixia init agent-b
+cd agent-b
+# edit agent.yaml → registry: "http://<machine-a-ip>:8080"
+# edit .env        → SIGNALING_URL=ws://<machine-a-ip>:8080/ws
+#                    TOKEN_URL=http://<machine-a-ip>:8080/api/token
+chatixia run
+```
+
+Both agents appear in the Hub dashboard and form a direct WebRTC DataChannel automatically.
+
 ### From source
+
+For contributors or development:
 
 **Prerequisites:** Rust 1.75+ · Python 3.12+ · Node.js 20+
 
@@ -92,27 +155,9 @@ cd agent && uv pip install -e . && cd ..
 
 # Hub dashboard
 cd hub && npm install && npm run build && cd ..
-```
 
-### Run
-
-```bash
-# 1. Start the registry
+# Run the registry
 cargo run --release -p chatixia-registry
-# → Listening on 0.0.0.0:8080
-
-# 2. Scaffold a new agent
-chatixia init my-weather-bot
-cd my-weather-bot
-cp .env.example .env          # fill in your LLM provider keys
-
-# 3. Pair with the mesh (get an invite code from an admin)
-chatixia pair 482901
-
-# 4. Run the agent
-chatixia run
-
-# 5. Open the Hub → http://localhost:8080
 ```
 
 ## Agent onboarding
@@ -152,7 +197,7 @@ prompt: |
   Use delegate to ask other agents for help.
 
 sidecar:
-  binary: ./target/release/chatixia-sidecar
+  binary: chatixia-sidecar    # found in PATH after cargo install
   api_key: ak_dev_001
   socket: /tmp/chatixia-my-weather-bot.sock
 
