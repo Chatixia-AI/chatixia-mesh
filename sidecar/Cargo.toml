@@ -14,7 +14,7 @@ uuid = { workspace = true }
 dotenvy = { workspace = true }
 webrtc = "0.12"
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
