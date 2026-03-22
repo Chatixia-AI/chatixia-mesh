@@ -85,3 +85,39 @@ pub async fn network_topology(State(state): State<AppState>) -> Json<TopologyRes
         mesh_edges: edges,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_topology_node_serialization() {
+        let node = TopologyNode {
+            agent_id: "a1".into(),
+            ip: "10.0.0.1".into(),
+            port: 8000,
+            hostname: "host1".into(),
+            sidecar_peer_id: "sc-1".into(),
+            mode: "auto".into(),
+            skills_count: 3,
+            health: "active".into(),
+            mesh_peers: vec!["sc-2".into()],
+        };
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(json["agent_id"], "a1");
+        assert_eq!(json["port"], 8000);
+        assert_eq!(json["skills_count"], 3);
+        assert_eq!(json["mesh_peers"][0], "sc-2");
+    }
+
+    #[test]
+    fn test_mesh_edge_serialization() {
+        let edge = MeshEdge {
+            from_peer: "sc-1".into(),
+            to_peer: "sc-2".into(),
+        };
+        let json = serde_json::to_value(&edge).unwrap();
+        assert_eq!(json["from_peer"], "sc-1");
+        assert_eq!(json["to_peer"], "sc-2");
+    }
+}

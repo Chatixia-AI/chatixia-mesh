@@ -201,3 +201,91 @@ fn generate_turn_credentials(secret: &str, ttl_secs: u64) -> (String, String) {
     let password = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
     (username, password)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_issue_and_validate_token() {
+        let auth = AuthState::new("test-secret");
+        let token = auth.issue_token("peer-1", "agent").unwrap();
+        let claims = auth.validate_token(&token).unwrap();
+        assert_eq!(claims.sub, "peer-1");
+        assert_eq!(claims.role, "agent");
+        assert!(claims.exp > claims.iat);
+    }
+
+    #[test]
+    fn test_validate_expired_token() {
+        let auth = AuthState::new("test-secret");
+        // Manually craft a token with past expiry
+        let past = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize
+            - 600;
+        let claims = Claims {
+            sub: "peer-1".into(),
+            role: "agent".into(),
+            iat: past,
+            exp: past + 1, // expired 599s ago
+        };
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(b"test-secret"),
+        )
+        .unwrap();
+        assert!(auth.validate_token(&token).is_err());
+    }
+
+    #[test]
+    fn test_validate_wrong_secret() {
+        let auth_a = AuthState::new("secret-a");
+        let auth_b = AuthState::new("secret-b");
+        let token = auth_a.issue_token("peer-1", "agent").unwrap();
+        assert!(auth_b.validate_token(&token).is_err());
+    }
+
+    #[test]
+    fn test_lookup_default_api_key() {
+        let auth = AuthState::new("test-secret");
+        let entry = auth.lookup_api_key("ak_dev_001").unwrap();
+        assert_eq!(entry.peer_id, "agent-001");
+        assert_eq!(entry.role, "agent");
+    }
+
+    #[test]
+    fn test_lookup_missing_api_key() {
+        let auth = AuthState::new("test-secret");
+        assert!(auth.lookup_api_key("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_api_key_peer_ids() {
+        let auth = AuthState::new("test-secret");
+        let ids = auth.api_key_peer_ids();
+        assert!(ids.contains("agent-001"));
+    }
+
+    #[test]
+    fn test_turn_credentials_format() {
+        let (username, credential) = generate_turn_credentials("my-secret", 86400);
+        // username = "{timestamp}:mesh"
+        assert!(username.ends_with(":mesh"));
+        let parts: Vec<&str> = username.split(':').collect();
+        assert_eq!(parts.len(), 2);
+        assert!(parts[0].parse::<u64>().is_ok());
+        // credential should be valid base64
+        assert!(general_purpose::STANDARD.decode(&credential).is_ok());
+    }
+
+    #[test]
+    fn test_turn_credentials_unique() {
+        let (u1, _) = generate_turn_credentials("s", 1);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let (u2, _) = generate_turn_credentials("s", 1);
+        assert_ne!(u1, u2);
+    }
+}
