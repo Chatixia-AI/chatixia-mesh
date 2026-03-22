@@ -87,12 +87,14 @@ async fn create_peer_connection() -> Result<Arc<RTCPeerConnection>> {
     Ok(Arc::new(api.new_peer_connection(config).await?))
 }
 
-/// Wire up ICE candidate forwarding for a peer connection.
+/// Wire up ICE candidate forwarding and connection state tracking for a peer connection.
 fn setup_ice_forwarding(
     pc: &Arc<RTCPeerConnection>,
     local_peer_id: &str,
     remote_peer_id: &str,
     sig_tx: mpsc::UnboundedSender<String>,
+    to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
+    mesh: Arc<MeshManager>,
 ) {
     let pid = local_peer_id.to_string();
     let tid = remote_peer_id.to_string();
@@ -121,6 +123,18 @@ fn setup_ice_forwarding(
     let rpid = remote_peer_id.to_string();
     pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
         info!("[WEBRTC] {} connection state: {}", rpid, state);
+        match state {
+            RTCPeerConnectionState::Failed
+            | RTCPeerConnectionState::Disconnected
+            | RTCPeerConnectionState::Closed => {
+                mesh.remove_peer(&rpid);
+                let _ = to_agent_tx.send(IpcMessage {
+                    msg_type: ipc_types::PEER_DISCONNECTED.into(),
+                    payload: serde_json::json!({ "peer_id": rpid }),
+                });
+            }
+            _ => {}
+        }
         Box::pin(async {})
     }));
 }
@@ -134,6 +148,9 @@ fn setup_datachannel_handler(
 ) {
     let rpid = remote_peer_id.to_string();
     let mesh_for_msg = mesh.clone();
+
+    // Clone for on_open before on_message takes ownership
+    let to_agent_for_open = to_agent_tx.clone();
 
     // Register on_message IMMEDIATELY (before on_open) to not miss early messages
     dc.on_message(Box::new(move |msg: DataChannelMessage| {
@@ -164,6 +181,11 @@ fn setup_datachannel_handler(
     let label = dc.label().to_owned();
     dc.on_open(Box::new(move || {
         info!("[DC] channel '{}' open with peer {}", label, rpid2);
+        // Notify Python agent about new peer
+        let _ = to_agent_for_open.send(IpcMessage {
+            msg_type: ipc_types::PEER_CONNECTED.into(),
+            payload: serde_json::json!({ "peer_id": rpid2 }),
+        });
         Box::pin(async {})
     }));
 }
@@ -178,7 +200,14 @@ pub async fn initiate_connection(
 ) -> Result<()> {
     let pc = create_peer_connection().await?;
 
-    setup_ice_forwarding(&pc, local_peer_id, remote_peer_id, sig_tx.clone());
+    setup_ice_forwarding(
+        &pc,
+        local_peer_id,
+        remote_peer_id,
+        sig_tx.clone(),
+        to_agent_tx.clone(),
+        mesh.clone(),
+    );
 
     // Create DataChannel
     let dc = pc.create_data_channel("mesh", None).await?;
@@ -217,7 +246,14 @@ pub async fn handle_offer(
 ) -> Result<()> {
     let pc = create_peer_connection().await?;
 
-    setup_ice_forwarding(&pc, local_peer_id, remote_peer_id, sig_tx.clone());
+    setup_ice_forwarding(
+        &pc,
+        local_peer_id,
+        remote_peer_id,
+        sig_tx.clone(),
+        to_agent_tx.clone(),
+        mesh.clone(),
+    );
 
     // Handle incoming data channels
     let rpid = remote_peer_id.to_string();

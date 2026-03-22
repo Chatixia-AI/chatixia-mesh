@@ -1,0 +1,9 @@
+# Default owner for everything
+* @kayeungadrian-tam
+
+# Component-specific ownership
+/registry/ @kayeungadrian-tam
+/sidecar/  @kayeungadrian-tam
+/agent/    @kayeungadrian-tam
+/hub/      @kayeungadrian-tam
+/docs/     @kayeungadrian-tam

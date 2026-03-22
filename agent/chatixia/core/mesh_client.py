@@ -71,6 +71,7 @@ class MeshClient:
         self._listen_task: asyncio.Task | None = None
         self._connected = False
         self._pending_responses: dict[str, asyncio.Future] = {}
+        self._peers: set[str] = set()
 
     async def start(self, auto_spawn_sidecar: bool = True) -> None:
         """Start the mesh client — optionally spawn the sidecar process."""
@@ -95,6 +96,11 @@ class MeshClient:
 
         # Start listening for incoming messages
         self._listen_task = asyncio.create_task(self._listen_loop())
+
+        # Register internal handlers for peer lifecycle events
+        self.on("peer_connected", self._on_peer_connected)
+        self.on("peer_disconnected", self._on_peer_disconnected)
+        self.on("peer_list", self._on_peer_list)
 
     async def _spawn_sidecar(self) -> None:
         """Spawn the Rust sidecar process."""
@@ -170,6 +176,36 @@ class MeshClient:
         """Register a handler for a message type. Use '*' for all messages."""
         self._handlers.setdefault(msg_type, []).append(handler)
 
+    # ─── Peer tracking ────────────────────────────────────────────────────
+
+    def _on_peer_connected(self, data: dict[str, Any]) -> None:
+        peer_id = data.get("payload", {}).get("peer_id", "")
+        if peer_id:
+            self._peers.add(peer_id)
+            logger.info("peer connected: %s (total: %d)", peer_id, len(self._peers))
+
+    def _on_peer_disconnected(self, data: dict[str, Any]) -> None:
+        peer_id = data.get("payload", {}).get("peer_id", "")
+        if peer_id:
+            self._peers.discard(peer_id)
+            logger.info("peer disconnected: %s (total: %d)", peer_id, len(self._peers))
+
+    def _on_peer_list(self, data: dict[str, Any]) -> None:
+        peers = data.get("payload", {}).get("peers", [])
+        self._peers = set(peers)
+        logger.info("peer list updated: %d peers", len(self._peers))
+
+    def is_peer_connected(self, peer_id: str) -> bool:
+        """Check if a specific peer is currently connected."""
+        return peer_id in self._peers
+
+    @property
+    def peers(self) -> set[str]:
+        """Currently connected peer IDs (returns a copy)."""
+        return set(self._peers)
+
+    # ─── IPC messaging ───────────────────────────────────────────────────
+
     async def _send_ipc(self, msg: dict[str, Any]) -> None:
         """Send a JSON-line message to the sidecar."""
         assert self._writer is not None
@@ -224,9 +260,9 @@ class MeshClient:
     async def list_peers(self) -> list[str]:
         """Get the list of connected mesh peers."""
         await self._send_ipc({"type": "list_peers", "payload": {}})
-        # Wait briefly for response
-        await asyncio.sleep(0.1)
-        return []  # TODO: implement response handling
+        # Wait for peer_list response (arrives via _on_peer_list handler)
+        await asyncio.sleep(0.2)
+        return list(self._peers)
 
     @property
     def connected(self) -> bool:

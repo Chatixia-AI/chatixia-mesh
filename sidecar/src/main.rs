@@ -51,9 +51,10 @@ async fn main() -> Result<()> {
 
     // Start IPC server (Unix socket) — connects sidecar to Python agent
     let ipc_mesh = mesh.clone();
-    let ipc_sig_tx = sig_tx.clone();
+    let ipc_to_agent_tx = to_agent_tx.clone();
     let ipc_handle = tokio::spawn(async move {
-        if let Err(e) = ipc::serve(&ipc_socket_path, to_agent_rx, ipc_mesh).await {
+        if let Err(e) = ipc::serve(&ipc_socket_path, to_agent_rx, ipc_mesh, ipc_to_agent_tx).await
+        {
             error!("[IPC] server error: {}", e);
         }
     });

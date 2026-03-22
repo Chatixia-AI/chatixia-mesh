@@ -1,17 +1,23 @@
 """Mesh-aware skills — delegate, discover, and communicate over WebRTC mesh.
 
-These skills replace the HTTP-based delegate/list_agents from chatixia-agent
-with WebRTC DataChannel equivalents that go through the Rust sidecar.
+Skills use P2P DataChannels via the MeshClient when available, with automatic
+fallback to the registry HTTP task queue when peers are not directly reachable.
+Discovery (list_agents, find_agent) always uses the registry — that's control plane.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
-import time
 import urllib.request
-import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from chatixia.core.mesh_client import MeshClient
+
+logger = logging.getLogger("chatixia.mesh_skills")
 
 
 def _registry_url() -> str:
@@ -40,7 +46,7 @@ def _post(url: str, data: dict) -> dict:
         return {"error": str(e)}
 
 
-# ─── List Agents ──────────────────────────────────────────────────────────
+# ─── List Agents (control plane — always HTTP) ──────────────────────────
 
 
 def handle_list_agents(**kwargs) -> str:
@@ -79,7 +85,7 @@ def handle_list_agents(**kwargs) -> str:
     return "\n".join(lines)
 
 
-# ─── Route by Skill ──────────────────────────────────────────────────────
+# ─── Route by Skill (control plane — always HTTP) ───────────────────────
 
 
 def handle_find_agent(skill: str = "", **kwargs) -> str:
@@ -98,24 +104,25 @@ def handle_find_agent(skill: str = "", **kwargs) -> str:
     return f"Agent '{aid}' (peer: {peer}) has skill '{skill}'"
 
 
-# ─── Delegate via Mesh ───────────────────────────────────────────────────
+# ─── Delegate via Mesh (P2P with registry fallback) ─────────────────────
 
 
-def handle_delegate(
+async def handle_delegate(
     message: str = "",
     target_agent_id: str = "",
     skill: str = "",
     wait: bool = True,
+    _mesh_client: MeshClient | None = None,
     **kwargs,
 ) -> str:
-    """Delegate a task to another agent. Uses registry for routing, hub for task queue."""
+    """Delegate a task to another agent. Uses P2P DataChannel with registry fallback."""
     registry = _registry_url()
     agent_id = os.environ.get("CHATIXIA_AGENT_ID", "unknown")
 
     if not message:
         return "Error: 'message' parameter is required."
 
-    # If no target specified, try to route by skill
+    # Route by skill if no target specified (discovery = control plane, HTTP is correct)
     if not target_agent_id and skill:
         route = _get(f"{registry}/api/registry/route?skill={skill}")
         if "error" not in route:
@@ -124,7 +131,38 @@ def handle_delegate(
     if not target_agent_id:
         return "Error: Could not determine target agent. Specify target_agent_id or a valid skill."
 
-    # Submit task to hub
+    # ── P2P path: send task_request via DataChannel, await task_response ──
+    if _mesh_client and _mesh_client.connected:
+        from chatixia.core.mesh_client import MeshMessage
+
+        target_peer = f"{target_agent_id}-sidecar"
+
+        if _mesh_client.is_peer_connected(target_peer):
+            msg = MeshMessage(
+                msg_type="task_request",
+                source_agent=agent_id,
+                target_agent=target_agent_id,
+                payload={"message": message, "skill": skill},
+            )
+
+            if not wait:
+                await _mesh_client.send(target_peer, msg)
+                return f"Task delegated to {target_agent_id} via P2P (fire-and-forget)"
+
+            try:
+                response = await _mesh_client.request(target_peer, msg, timeout=120.0)
+                payload = response.get("payload", {})
+                error = payload.get("error", "")
+                if error:
+                    return f"Task failed: {error}"
+                return payload.get("result", "(no result)")
+            except asyncio.TimeoutError:
+                return f"Timeout: P2P task to {target_agent_id} timed out after 120s"
+            except Exception as e:
+                logger.warning("P2P delegate failed, falling back to registry: %s", e)
+                # Fall through to HTTP fallback
+
+    # ── Fallback: HTTP task queue ────────────────────────────────────────
     result = _post(
         f"{registry}/api/hub/tasks",
         {
@@ -141,12 +179,12 @@ def handle_delegate(
         return f"Error: Failed to submit task: {result}"
 
     if not wait:
-        return f"Task submitted: task_id={task_id}"
+        return f"Task submitted via registry: task_id={task_id}"
 
-    # Poll for result
-    deadline = time.time() + 120
-    while time.time() < deadline:
-        time.sleep(3)
+    # Poll for result (async — no longer blocks the event loop)
+    deadline = asyncio.get_event_loop().time() + 120
+    while asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(3)
         status = _get(f"{registry}/api/hub/tasks/{task_id}")
         state = status.get("state", "pending")
         if state == "completed":
@@ -157,26 +195,39 @@ def handle_delegate(
     return f"Timeout: task {task_id} still pending after 120s"
 
 
-# ─── Mesh Send ────────────────────────────────────────────────────────────
+# ─── Mesh Send (P2P with registry fallback) ─────────────────────────────
 
 
-def handle_mesh_send(
+async def handle_mesh_send(
     target_agent_id: str = "",
     message: str = "",
+    _mesh_client: MeshClient | None = None,
     **kwargs,
 ) -> str:
-    """Send a direct message to another agent over the WebRTC mesh.
-
-    This uses the IPC bridge to the Rust sidecar, which sends over DataChannel.
-    For synchronous skill handlers, we use the hub task queue as fallback.
-    """
+    """Send a direct message to another agent over the WebRTC mesh."""
     if not target_agent_id or not message:
         return "Error: 'target_agent_id' and 'message' are required."
 
-    registry = _registry_url()
     agent_id = os.environ.get("CHATIXIA_AGENT_ID", "unknown")
 
-    # Use hub task queue (sync-compatible fallback)
+    # ── P2P path: send via DataChannel ───────────────────────────────────
+    if _mesh_client and _mesh_client.connected:
+        from chatixia.core.mesh_client import MeshMessage
+
+        target_peer = f"{target_agent_id}-sidecar"
+
+        if _mesh_client.is_peer_connected(target_peer):
+            msg = MeshMessage(
+                msg_type="agent_prompt",
+                source_agent=agent_id,
+                target_agent=target_agent_id,
+                payload={"message": message, "direct": True},
+            )
+            await _mesh_client.send(target_peer, msg)
+            return f"Message sent to {target_agent_id} via P2P DataChannel"
+
+    # ── Fallback: HTTP task queue ────────────────────────────────────────
+    registry = _registry_url()
     result = _post(
         f"{registry}/api/hub/tasks",
         {
@@ -189,24 +240,44 @@ def handle_mesh_send(
     )
 
     task_id = result.get("task_id", "")
-    return f"Message sent to {target_agent_id} (task_id={task_id})"
+    return f"Message sent to {target_agent_id} via registry (task_id={task_id})"
 
 
-# ─── Mesh Broadcast ──────────────────────────────────────────────────────
+# ─── Mesh Broadcast (P2P with registry fallback) ────────────────────────
 
 
-def handle_mesh_broadcast(message: str = "", **kwargs) -> str:
+async def handle_mesh_broadcast(
+    message: str = "",
+    _mesh_client: MeshClient | None = None,
+    **kwargs,
+) -> str:
     """Broadcast a message to all agents in the mesh."""
     if not message:
         return "Error: 'message' parameter is required."
 
+    agent_id = os.environ.get("CHATIXIA_AGENT_ID", "unknown")
+
+    # ── P2P path: broadcast via DataChannel ──────────────────────────────
+    if _mesh_client and _mesh_client.connected and _mesh_client.peers:
+        from chatixia.core.mesh_client import MeshMessage
+
+        msg = MeshMessage(
+            msg_type="agent_prompt",
+            source_agent=agent_id,
+            target_agent="*",
+            payload={"message": message, "broadcast": True},
+        )
+        await _mesh_client.broadcast(msg)
+        peer_count = len(_mesh_client.peers)
+        return f"Broadcast sent to {peer_count} peer(s) via P2P DataChannel"
+
+    # ── Fallback: HTTP to each agent ─────────────────────────────────────
     registry = _registry_url()
     agents = _get(f"{registry}/api/registry/agents")
 
     if isinstance(agents, dict) and "error" in agents:
         return f"Error: {agents['error']}"
 
-    agent_id = os.environ.get("CHATIXIA_AGENT_ID", "unknown")
     sent = 0
     for a in agents:
         aid = a.get("agent_id", "")
@@ -222,4 +293,4 @@ def handle_mesh_broadcast(message: str = "", **kwargs) -> str:
             )
             sent += 1
 
-    return f"Broadcast sent to {sent} agent(s)"
+    return f"Broadcast sent to {sent} agent(s) via registry"
