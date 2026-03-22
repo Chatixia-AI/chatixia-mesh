@@ -13,7 +13,7 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 dotenvy = { workspace = true }
 axum = { version = "0.8", features = ["ws"] }
-axum-extra = { version = "0.10", features = ["typed-header"] }
+axum-extra = { version = "0.12", features = ["typed-header"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 jsonwebtoken = "10"
 hmac = "0.12"
