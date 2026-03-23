@@ -176,8 +176,6 @@ function TaskDetail({ task }: { task: Task }) {
     <div style={{
       background: color.surfaceContainerLow,
       padding: `${spacing[3]} ${spacing[5]} ${spacing[4]} ${spacing[5]}`,
-      borderTop: `1px solid ${color.outlineVariant}`,
-      borderBottom: `1px solid ${color.outlineVariant}`,
     }}>
       {rows.map(([label, value]) => (
         <div key={label} style={{

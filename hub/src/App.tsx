@@ -59,6 +59,7 @@ export default function App() {
         gap: 16,
         padding: `${spacing[4]} ${spacing[12]}`,
         ...glass.header,
+        boxShadow: '0 1px 24px rgba(44,47,49,0.04)',
       }}>
         <div style={{
           background: gradient.primary,

@@ -108,7 +108,7 @@ export function AgentCards({ agents, onSelect, selectedId }: Props) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>endpoint</span>
-                  <span style={{ color: color.onSurface, fontFamily: font.mono, fontSize: '0.72rem' }}>{a.ip}:{a.port}</span>
+                  <span style={{ color: color.onSurface, fontFamily: font.mono, fontSize: '0.72rem' }}>{a.ip ? `${a.ip}:${a.port}` : '—'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>peer</span>
