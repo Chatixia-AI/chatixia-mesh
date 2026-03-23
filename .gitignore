@@ -20,7 +20,8 @@ api_keys.json
 **/.env
 .env
 
-# User-specific agent manifests
+# User-specific agent directories and manifests
+agent-*/
 my-agent.yaml
 *.db
 *.db-wal
