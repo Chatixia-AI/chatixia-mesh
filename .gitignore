@@ -42,4 +42,8 @@ Thumbs.db
 # Sidecar socket
 /tmp/chatixia-*.sock
 
+# Test artifacts
+*.png
+.playwright-mcp/
+
 firebase-debug.log

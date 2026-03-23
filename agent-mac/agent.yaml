@@ -1,0 +1,49 @@
+# Chatixia Mesh Agent
+# https://github.com/Chatixia-AI/chatixia-mesh
+
+name: agent-mac
+description: ""
+
+# Registry — the mesh signaling + coordination server
+registry: "http://localhost:9090"
+
+# LLM provider: azure | openai | ollama
+provider: azure
+# model: gpt-4o   # Override default model
+
+# System prompt — defines the agent's persona and behaviour
+prompt: |
+  You are a helpful AI assistant connected to the Chatixia mesh.
+  Use the available tools to help the user.
+  You can collaborate with other agents using delegate and mesh_send.
+
+# Sidecar — the Rust WebRTC peer that bridges you to the mesh
+# Install: cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar
+sidecar:
+  binary: chatixia-sidecar
+  api_key: ak_dev_001
+  socket: /tmp/chatixia-agent-mac.sock
+
+# Skills configuration
+skills:
+  builtin:
+    - delegate
+    - list_agents
+    - mesh_send
+    - mesh_broadcast
+  # dirs:                  # Additional skill directories
+  #   - ./skills
+  # disabled:              # Skills to exclude
+  #   - mesh_broadcast
+
+# Autonomous goals (activated with future --daemon support)
+# goals:
+#   - name: example_monitor
+#     sensor: "Check for new items"
+#     action: "Summarize and report"
+#     interval: 300
+
+# Runtime settings
+data_dir: .chatixia
+# max_turns: 10
+# context_window: 120000

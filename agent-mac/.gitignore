@@ -1,0 +1,4 @@
+.env
+.chatixia/
+__pycache__/
+*.pyc
