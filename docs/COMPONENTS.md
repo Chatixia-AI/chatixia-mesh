@@ -385,6 +385,21 @@ docker compose --profile turn up   # include coturn TURN relay
 
 ---
 
+## Documentation (`docs/`)
+
+| File | Purpose |
+|------|---------|
+| `COMPONENTS.md` | Comprehensive codebase map — read first each session |
+| `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-018) |
+| `GLOSSARY.md` | Domain-specific term definitions |
+| `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |
+| `WEBRTC_VS_ALTERNATIVES.md` | WebRTC vs HTTP/gRPC transport comparison, devil's advocate analysis, rebuttals, experiment plan |
+| `DESIGN.md` | Atmospheric Luminescence UI design system specification |
+| `meetings/` | Session meeting notes (local only, gitignored) |
+
+---
+
 ## Documentation Site (`site/`)
 
 Static GitHub Pages documentation site using the Atmospheric Luminescence design system.

@@ -119,6 +119,34 @@ Default TTL: 300s (5 minutes). Expiry check runs every 30s.
 - TURN credentials: ephemeral, generated via HMAC-SHA1 (coturn `use-auth-secret` mode, 24h TTL)
 - ICE config served via `GET /api/config`
 
+## Transport Rationale
+
+WebRTC DataChannels were chosen over HTTP and gRPC for the agent-to-agent data plane. The key factors:
+
+1. **NAT traversal** — agents may run on developer laptops, edge devices, or behind corporate firewalls. ICE/STUN/TURN handles connectivity without VPNs or port forwarding. gRPC and HTTP require all endpoints to be directly addressable.
+2. **End-to-end encryption** — DTLS between peers means the registry (signaling server) never sees message content. HTTP routing through the registry would expose all payloads to the server.
+3. **No single point of failure for data** — once DataChannels are established, agents communicate directly. Registry downtime does not interrupt existing P2P connections.
+
+### Graceful Degradation
+
+The transport layer degrades across three tiers:
+
+```text
+Tier 1: P2P DataChannel     (fastest, <100ms, DTLS encrypted, direct)
+  ↓ if no direct path
+Tier 2: TURN relay           (slower, still DTLS encrypted, relayed via coturn)
+  ↓ if UDP blocked / no TURN
+Tier 3: HTTP task queue      (slowest, 3–15s, via registry REST API)
+```
+
+Skill handlers (`delegate`, `mesh_send`, `mesh_broadcast`) attempt the P2P path first via `MeshClient`. If the target peer is not directly connected, they fall back to the registry HTTP task queue (ADR-005, ADR-016). The system never fails — it only slows down.
+
+### Trade-offs
+
+This choice carries significant costs: 5–10s connection setup per peer, O(N²) connections in full mesh, SCTP reliable mode has TCP-like head-of-line blocking, the sidecar adds deployment complexity, and the WebRTC ecosystem is less mature than HTTP/gRPC.
+
+See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full comparison (advantages, devil's advocate critique, rebuttals, and experiment plan).
+
 ## Scalability Considerations
 
 - Full mesh: O(N²) connections. Practical for ~10-50 agents.

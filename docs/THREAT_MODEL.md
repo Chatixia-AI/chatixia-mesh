@@ -169,6 +169,33 @@ Internet / LAN
 
 **Residual risk:** If the token is intercepted in transit (approval response) or leaked from the agent's storage, it can be used until revoked. TLS on the registry would mitigate in-transit theft.
 
+### T11: WebRTC Protocol Stack Attack Surface
+
+**Attack:** Exploit vulnerabilities in the ICE, STUN/TURN, DTLS, or SCTP layers of the WebRTC stack.
+
+**Context:** The WebRTC data path uses four protocol layers (ICE → STUN/TURN → DTLS → SCTP), each with its own implementation and attack surface. By comparison, HTTP/gRPC uses only TLS. See [WEBRTC_VS_ALTERNATIVES.md §5.10](WEBRTC_VS_ALTERNATIVES.md) for full analysis.
+
+**Known vulnerabilities:**
+
+- DTLS ClientHello race condition (DoS) — affected Asterisk, RTPEngine, FreeSWITCH
+- TURN server misconfiguration — open TURN servers abused as traffic relays
+- ICE candidate injection via compromised signaling — could redirect DataChannel connections
+
+**Mitigations:**
+
+- Sidecars only accept connections from peers authenticated via registry signaling (JWT-verified)
+- TURN uses ephemeral credentials (HMAC-SHA1, 24h TTL) — no long-lived TURN credentials
+- TURN is optional and disabled by default — only deployed when needed
+- Homogeneous webrtc-rs versions across all sidecars — no cross-implementation interop surface
+
+**Residual risk:** The webrtc-rs library is less audited than hyper/tonic (HTTP/gRPC Rust ecosystem). A vulnerability in webrtc-rs DTLS or SCTP handling could affect all sidecars simultaneously. Mitigated by: sidecar isolation (separate process from Python agent), and the sidecar being a small surface (~1,500 lines of Rust).
+
+**Recommended mitigations:**
+
+- Pin webrtc-rs to audited versions and monitor for CVEs
+- Run sidecars in sandboxed containers with minimal capabilities
+- Consider fuzzing the sidecar's DTLS/SCTP handling in CI
+
 ## Security Checklist for Production
 
 - [ ] Change `SIGNALING_SECRET` from default

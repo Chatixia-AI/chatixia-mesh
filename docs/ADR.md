@@ -359,3 +359,80 @@ Release flow: PR with code changes → CI enforces version bump → merge → cr
 - (+) Forgotten version bumps caught before merge (CI fails the PR)
 - (-) Requires one-time PyPI trusted publisher setup (Owner: `Chatixia-AI`, Repo: `chatixia-mesh`, Workflow: `publish-pypi.yml`, Environment: `pypi`)
 - (-) Version check only compares `agent/chatixia/**` and `agent/pyproject.toml` — changes to test files alone won't require a bump (by design)
+
+---
+
+## ADR-018: WebRTC DataChannels over HTTP/gRPC for Agent-to-Agent Communication
+
+**Date:** 2026-03-23
+**Status:** Accepted
+
+**Context:** Agent-to-agent communication is the core data path in chatixia-mesh. Three transport options were evaluated: (1) HTTP polling/webhooks through a central server, (2) gRPC with persistent streams, and (3) WebRTC DataChannels. The decision affects latency, resilience, security, NAT traversal, and operational complexity.
+
+**Decision:** Use WebRTC DataChannels for all agent-to-agent data exchange. The registry handles signaling (SDP/ICE via WebSocket) and discovery only — it is never in the data path.
+
+### Why WebRTC over HTTP
+
+| Concern | HTTP (via registry) | WebRTC DataChannels |
+| --- | --- | --- |
+| **Topology** | Star — all traffic routes through the registry server | Full mesh — agents talk directly, peer-to-peer |
+| **Latency** | Round-trip through server + poll interval (3–15s with heartbeat-based task pickup) | Sub-second; direct connection, no intermediary |
+| **Single point of failure** | Registry down = all communication stops | Connected agents keep working if registry goes down (P2P resilience) |
+| **Server bandwidth** | O(N²) traffic funneled through one server — registry becomes a bottleneck | Traffic distributed across peers; registry only handles lightweight signaling |
+| **Encryption** | TLS to/from server; server sees plaintext | DTLS end-to-end between peers; registry never sees message content |
+| **Scalability** | Server must handle all message throughput | Throughput scales with the number of peers, not server capacity |
+
+### Why WebRTC over gRPC
+
+| Concern | gRPC (direct streams) | WebRTC DataChannels |
+| --- | --- | --- |
+| **NAT traversal** | Requires all agents to be directly addressable (public IP or VPN); fails behind symmetric NATs, CGNAT, or firewalls | Built-in ICE/STUN/TURN handles NAT traversal automatically — agents behind home routers, corporate firewalls, or mobile networks can connect |
+| **Connection setup** | Each agent needs a known address:port; service discovery is an external concern | Signaling server brokers the connection; agents only need to reach the registry, not each other |
+| **Encryption** | mTLS — requires PKI, certificate distribution, and rotation across all agents | DTLS with self-signed certificates — key exchange happens during the ICE handshake, no external PKI needed |
+| **Protocol overhead** | HTTP/2 framing + Protobuf serialization; designed for structured RPC, heavier for fire-and-forget messaging | SCTP over DTLS — lightweight, message-oriented; supports both reliable and unreliable delivery modes |
+| **Firewall friendliness** | Requires open inbound ports on each agent (problematic in edge deployments) | Uses UDP hole-punching; works through most firewalls without port forwarding |
+| **Schema coupling** | Protobuf `.proto` files must be shared and versioned across all agents — tight coupling | JSON messages over DataChannel — schema-free, easy to evolve independently |
+| **Bidirectional messaging** | Supported via streaming RPCs, but requires both sides to define service contracts | Native bidirectional — any peer can send at any time, no client/server distinction |
+
+### Summary of WebRTC advantages for this system
+
+1. **True P2P** — no central bottleneck or single point of failure for agent data
+2. **NAT traversal built-in** — ICE/STUN/TURN handles agents behind any network topology
+3. **End-to-end encryption** — DTLS between peers; the registry (and any attacker on the signaling path) cannot read message content
+4. **Low latency** — direct connection, sub-second task delegation vs. seconds with HTTP polling
+5. **Resilience** — connected agents survive registry downtime
+6. **No inbound ports** — agents don't need to be publicly addressable or open firewall rules
+7. **No PKI** — DTLS key exchange during ICE negotiation eliminates certificate management
+8. **Lightweight** — SCTP/DTLS has lower overhead than HTTP/2+TLS for small JSON messages
+9. **Bidirectional by default** — no client/server asymmetry; any agent can initiate communication
+
+### Trade-offs accepted
+
+- **Connection setup latency** — ICE gathering + DTLS handshake takes 5–10s per peer (vs ~50–100ms for TCP+TLS). Full mesh formation with 10 agents can take minutes.
+- **Complexity** — WebRTC negotiation (SDP, ICE, DTLS) is inherently more complex than opening an HTTP connection; mitigated by isolating all WebRTC logic in the Rust sidecar (ADR-001)
+- **O(N²) connections** — full mesh doesn't scale past ~50 agents (ADR-002); acceptable for current scope
+- **UDP blocking** — some corporate networks block UDP entirely; mitigated by TURN relay fallback (ADR-006), but TURN negates the P2P latency advantage
+- **SCTP reliable mode** — head-of-line blocking in ordered mode behaves like TCP but with more protocol layers; we gain no benefit from UDP flexibility when using reliable+ordered DataChannels
+- **Sidecar tax** — every agent requires a Rust sidecar process + Unix socket IPC + signaling WebSocket; four moving parts where HTTP would need one
+- **Missing infrastructure** — no built-in load balancing, circuit breaking, retry logic, or observability (things gRPC/HTTP ecosystems provide for free)
+- **Library maturity** — webrtc-rs is less battle-tested than hyper/tonic/axum; the Sans-I/O rewrite is in progress
+- **Debugging** — DataChannel traffic is harder to inspect than HTTP; no server-side equivalent of chrome://webrtc-internals
+- **Security surface** — four protocol layers to audit (ICE, STUN/TURN, DTLS, SCTP) vs one (TLS) for HTTP/gRPC
+- **NAT traversal overhead** — when agents are co-located (same VPC, Docker, LAN), ICE/STUN is pure overhead solving a problem that doesn't exist
+
+### Conditions for reconsideration
+
+WebRTC should be replaced if: (1) all agents run in the same network (NAT traversal unnecessary — switch to gRPC), (2) agent count exceeds ~30 (O(N²) unsustainable), (3) webrtc-rs stalls, or (4) WebTransport over QUIC matures as a simpler alternative.
+
+See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full devil's advocate analysis, experiment plan, and detailed comparison tables.
+
+**Consequences:**
+
+- (+) Architecture delivers on its core promise: "registry is control plane only"
+- (+) Agents deployed at the edge (behind NAT, on mobile networks, on IoT devices) can join the mesh without VPN or port forwarding
+- (+) Message confidentiality without operational PKI burden
+- (+) Latency profile suitable for real-time agent collaboration (sub-second vs. seconds)
+- (-) Requires a signaling server (the registry) for initial connection setup
+- (-) WebRTC ecosystem is complex — justified by the sidecar pattern encapsulating that complexity
+- (-) Significant engineering overhead for infrastructure that HTTP/gRPC provides out of the box
+- (-) The honest question remains: do enough real deployments span NAT boundaries to justify the cost?
