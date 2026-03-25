@@ -1,0 +1,80 @@
+Task Lifecycle State Machine
+=============================
+Shows the states a task passes through from submission to completion
+or failure, including TTL expiration transitions.
+
+
+                     +------------------+
+                     | Task submitted   |
+                     | POST /api/hub/   |
+                     |      tasks       |
+                     +--------+---------+
+                              |
+                              v
+                   +----------+----------+
+                   |                     |
+                   |      PENDING        |
+                   |                     |
+                   |  Waiting for agent  |
+                   |  assignment         |
+                   +---+-------------+---+
+                       |             |
+                       |             |  TTL expires
+            assigned   |             |  (no agent picked
+            to agent   |             |   up the task)
+                       |             |
+                       v             v
+            +----------+---+    +---+------------+
+            |              |    |                 |
+            |   ASSIGNED   |    |     FAILED      |
+            |              |    |                 |
+            |  Agent is    |    |  error:         |
+            |  executing   |    |  "TTL expired"  |
+            |  the skill   |    |                 |
+            +--+--------+--+    +-----------------+
+               |        |
+               |        |  TTL expires
+    agent      |        |  (agent did not
+    reports    |        |   report back)
+    result     |        |
+               |        |  OR agent reports
+               |        |  error explicitly
+               v        v
+    +----------+-+   +--+------------+
+    |            |   |               |
+    |  COMPLETED |   |    FAILED     |
+    |            |   |               |
+    |  result:   |   |  error:       |
+    |  { ... }   |   |  "TTL expired"|
+    |            |   |  or agent msg |
+    +------------+   +---------------+
+
+
+Transition Table
+-----------------
+
+  From        To          Trigger
+  --------    ---------   ------------------------------------------
+  (new)       PENDING     Task submitted via POST /api/hub/tasks
+  PENDING     ASSIGNED    Agent heartbeat picks up task (skill match)
+                          OR P2P task_request sent to target agent
+  PENDING     FAILED      TTL expires with no assignment
+                          (expire_tasks_loop, runs every 30s)
+  ASSIGNED    COMPLETED   Agent reports success via
+                          POST /api/hub/tasks/{id}
+                          with state="completed" + result
+  ASSIGNED    FAILED      Agent reports error via
+                          POST /api/hub/tasks/{id}
+                          with state="failed" + error
+                          OR TTL expires (expire_tasks_loop)
+
+TTL Details
+-----------
+  Default TTL:       300 seconds (5 minutes)
+  Expiry check:      Every 30 seconds (expire_tasks_loop)
+  TTL applies to:    Both PENDING and ASSIGNED states
+  On expiry:         state -> "failed", error -> "TTL expired"
+
+Terminal States
+---------------
+  COMPLETED and FAILED are terminal -- no further transitions.

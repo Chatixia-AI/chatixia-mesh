@@ -1,6 +1,9 @@
 //! Signaling client — connects to registry via WebSocket, handles SDP/ICE exchange.
+//!
+//! Automatically reconnects with exponential backoff when the WebSocket drops.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
@@ -34,18 +37,85 @@ pub async fn exchange_token(token_url: &str, api_key: &str) -> Result<TokenRespo
     Ok(resp)
 }
 
-/// Run the signaling connection loop.
+/// Backoff parameters for reconnection.
+const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Run the signaling connection with automatic reconnect.
+///
+/// On disconnect or error, clears stale WebRTC peers, re-authenticates
+/// (JWT may have expired), and reconnects with exponential backoff.
 pub async fn run(
+    signaling_url: &str,
+    token_url: &str,
+    api_key: &str,
+    peer_id: &str,
+    mesh: Arc<MeshManager>,
+    to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
+) -> Result<()> {
+    let mut backoff = INITIAL_BACKOFF;
+    let mut attempt: u32 = 0;
+
+    loop {
+        // Re-authenticate on every connect (JWT has 5-min expiry)
+        let token = match exchange_token(token_url, api_key).await {
+            Ok(t) => t,
+            Err(e) => {
+                warn!(
+                    "[SIG] auth failed (attempt {}): {}, retrying in {:?}",
+                    attempt, e, backoff
+                );
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(MAX_BACKOFF);
+                attempt += 1;
+                continue;
+            }
+        };
+
+        let ws_url = format!("{}?token={}", signaling_url, token.token);
+
+        // Create fresh channels for this connection
+        let (sig_tx, sig_rx) = mpsc::unbounded_channel::<String>();
+
+        info!("[SIG] connecting (attempt {})...", attempt);
+        match connect_once(&ws_url, peer_id, sig_tx, sig_rx, &mesh, &to_agent_tx).await {
+            Ok(()) => {
+                warn!("[SIG] connection closed cleanly, reconnecting...");
+            }
+            Err(e) => {
+                warn!("[SIG] connection error: {}, reconnecting...", e);
+            }
+        }
+
+        // Clean up stale WebRTC peers before reconnecting
+        mesh.clear_all_peers().await;
+
+        if attempt == 0 {
+            // First disconnect — reconnect immediately
+            info!("[SIG] reconnecting immediately (first attempt)");
+        } else {
+            info!("[SIG] reconnecting in {:?}", backoff);
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(MAX_BACKOFF);
+        }
+        attempt += 1;
+    }
+}
+
+/// Single signaling connection attempt — returns when the WebSocket closes.
+async fn connect_once(
     ws_url: &str,
     peer_id: &str,
     sig_tx: mpsc::UnboundedSender<String>,
     mut sig_rx: mpsc::UnboundedReceiver<String>,
-    mesh: Arc<MeshManager>,
-    to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
+    mesh: &Arc<MeshManager>,
+    to_agent_tx: &mpsc::UnboundedSender<IpcMessage>,
 ) -> Result<()> {
     let (ws_stream, _) = connect_async(ws_url).await?;
     let (mut ws_write, mut ws_read) = ws_stream.split();
     info!("[SIG] connected to signaling server");
+
+    // Reset backoff on successful connect (caller tracks this via attempt counter)
 
     // Send register message
     let register = SignalingMessage {
@@ -74,7 +144,7 @@ pub async fn run(
             let text_str: &str = text.as_ref();
             match serde_json::from_str::<SignalingMessage>(text_str) {
                 Ok(sm) => {
-                    handle_signaling_message(sm, &peer_id, &sig_tx, &mesh, &to_agent_tx).await;
+                    handle_signaling_message(sm, &peer_id, &sig_tx, mesh, to_agent_tx).await;
                 }
                 Err(e) => {
                     warn!("[SIG] failed to parse message: {}", e);

@@ -63,15 +63,20 @@ cd hub && npm run dev
 
 All documentation lives in the `docs/` folder. Always log decisions and keep docs in sync with code changes.
 
-| Document                | When to read                                                       | When to update                                                                                                                       |
-| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `docs/COMPONENTS.md`    | Start of every session — your codebase map                         | When adding/removing files, modules, routes, env vars, skills, or config                                                             |
-| `docs/SYSTEM_DESIGN.md` | When you need to understand architecture, protocols, or auth flows | When changing architecture, protocols, authentication, infrastructure, or component responsibilities                                 |
-| `docs/ADR.md`           | When you need context on past decisions                            | When making a new architectural decision — add a new ADR entry                                                                       |
-| `docs/GLOSSARY.md`      | When encountering unfamiliar domain terms                          | When introducing new domain-specific terms — append as a markdown table row                                                          |
-| `docs/THREAT_MODEL.md`  | When working on auth, security, or network-facing code             | When adding new attack surfaces, mitigations, or security-relevant changes                                                           |
-| `docs/WEBRTC_VS_ALTERNATIVES.md` | When discussing transport choices or onboarding new contributors | When running experiments or updating comparison data                                                                     |
-| `docs/meetings/`        | For context on prior session work                                  | After every session — create `yyyy_mm_dd_S<session_number>.md` with summary, decisions, next actions, and items needing human review |
+| Document                                | When to read                                                       | When to update                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `docs/COMPONENTS.md`                    | Start of every session — your codebase map                         | When adding/removing files, modules, routes, env vars, skills, or config                                                             |
+| `docs/SYSTEM_DESIGN.md`                 | When you need to understand architecture, protocols, or auth flows | When changing architecture, protocols, authentication, infrastructure, or component responsibilities                                 |
+| `docs/ADR.md`                           | When you need context on past decisions                            | When making a new architectural decision — add a new ADR entry                                                                       |
+| `docs/GLOSSARY.md`                      | When encountering unfamiliar domain terms                          | When introducing new domain-specific terms — append as a markdown table row                                                          |
+| `docs/THREAT_MODEL.md`                  | When working on auth, security, or network-facing code             | When adding new attack surfaces, mitigations, or security-relevant changes                                                           |
+| `docs/WEBRTC_VS_ALTERNATIVES.md`        | When discussing transport choices or onboarding new contributors   | When running experiments or updating comparison data                                                                                 |
+| `docs/DEPLOYMENT_GUIDE.md`              | When deploying agents across networks (VPN, home, cloud)           | When changing deployment steps, tunnel setup, TURN config, or connectivity tiers                                                     |
+| `docs/meetings/`                        | For context on prior session work                                  | After every session — create `yyyy_mm_dd_S<session_number>.md` with summary, decisions, next actions, and items needing human review |
+
+## Learning Materials
+
+`CURRICULUM.md` tracks progress of the learning curriculum in `learnings/`. Update `CURRICULUM.md` status when lessons are added or modified.
 
 ## NEVER commit these files
 

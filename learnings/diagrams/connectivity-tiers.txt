@@ -1,0 +1,90 @@
+Connectivity Tiers: Graceful Transport Degradation
+====================================================
+Shows the three tiers of connectivity in chatixia-mesh. The system
+never fails -- it only slows down. Each tier shows the data path,
+latency, and when it is used.
+
+
+Tier 1: Direct P2P DataChannel
+===============================
+  Latency: <100ms
+  When:    Both peers have an open UDP path (same LAN, open NAT)
+  Encryption: DTLS (end-to-end, registry never sees content)
+
+  Agent A --> Sidecar A --[ UDP / DataChannel ]--> Sidecar B --> Agent B
+     |           |                                     |           |
+     |   IPC     |          direct peer-to-peer        |    IPC    |
+     |  (Unix    |          DTLS encrypted             |   (Unix   |
+     |  socket)  |          no intermediary             |   socket) |
+     |           |                                     |           |
+
+
+Tier 2: TURN Relay
+===============================
+  Latency: 50-200ms
+  When:    NAT or firewall blocks direct UDP, but TURN server available
+  Encryption: DTLS (end-to-end -- TURN relay cannot read content)
+
+  Agent A --> Sidecar A --[ UDP ]--> TURN Server --[ UDP ]--> Sidecar B --> Agent B
+     |           |                    (coturn)                    |           |
+     |   IPC     |              relayed, but still               |    IPC    |
+     |           |              DTLS encrypted                   |           |
+     |           |              end-to-end                       |           |
+
+
+Tier 3: HTTP Task Queue via Registry
+===============================
+  Latency: 3-15 seconds
+  When:    All UDP blocked (strict enterprise firewall), no TURN configured
+  Encryption: TLS to registry (registry CAN see task content)
+
+  Agent A --[ HTTP POST ]--> Registry --[ heartbeat poll ]--> Agent B
+     |                          |                                |
+     |   POST /api/hub/tasks   |   Agent B polls on heartbeat   |
+     |   (submit task)         |   (~15s interval)               |
+     |                         |   receives assigned task        |
+     |                         |                                 |
+     |                         |   POST /api/hub/tasks/{id}     |
+     |                         |<------- (result reported) ------|
+
+
+Degradation Flow
+-----------------
+
+  Sidecar attempts connection:
+
+    1. Gather ICE candidates (host, server-reflexive via STUN)
+       |
+       +--> Direct UDP path found?
+       |      YES --> Tier 1: P2P DataChannel  (<100ms)
+       |      NO  |
+       |          v
+       |    2. TURN relay configured?
+       |       |
+       |       +--> TURN relay works?
+       |       |      YES --> Tier 2: TURN Relay  (50-200ms)
+       |       |      NO  |
+       |       |           v
+       |       +--> Not configured
+       |                   |
+       v                   v
+    3. Skill handler falls back to HTTP task queue
+       --> Tier 3: Registry Task Queue  (3-15s)
+
+
+Comparison Table
+-----------------
+
+  Property          Tier 1 (P2P)      Tier 2 (TURN)     Tier 3 (HTTP)
+  -----------       -----------       -----------       -----------
+  Latency           <100ms            50-200ms          3-15s
+  Transport         UDP               UDP (relayed)     TCP (HTTP)
+  Encryption        DTLS (E2E)        DTLS (E2E)        TLS (to registry)
+  Registry in path  No                No                Yes
+  Registry sees     Nothing           Nothing           Task content
+    content?
+  Requires          Open UDP path     TURN server       Only HTTP to
+                                      (coturn)          registry
+  Survives          Yes               Yes               No (registry
+    registry                                            is the path)
+    downtime?

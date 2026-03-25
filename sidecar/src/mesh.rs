@@ -125,6 +125,26 @@ impl MeshManager {
             .collect()
     }
 
+    /// Remove all peers and close their connections.
+    ///
+    /// Called before signaling reconnect to ensure stale WebRTC connections
+    /// are cleaned up and fresh ones can be established.
+    pub async fn clear_all_peers(&self) {
+        let peer_ids: Vec<String> = self.peers.iter().map(|e| e.key().clone()).collect();
+        for pid in &peer_ids {
+            if let Some((_, peer)) = self.peers.remove(pid) {
+                let _ = peer.pc.close().await;
+            }
+            self.channels.remove(pid);
+        }
+        if !peer_ids.is_empty() {
+            info!(
+                "[MESH] cleared {} stale peers for reconnect",
+                peer_ids.len()
+            );
+        }
+    }
+
     /// Check if we have a connection to a peer.
     pub fn is_connected(&self, peer_id: &str) -> bool {
         self.channels.contains_key(peer_id)

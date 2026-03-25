@@ -1,0 +1,95 @@
+Signaling Sequence: Two Peers Connecting
+==========================================
+Full sequence diagram showing how Sidecar A and Sidecar B establish
+a WebRTC DataChannel through the Registry signaling server, then
+notify their local agents via IPC.
+
+
+  Agent A       Sidecar A        Registry         Sidecar B       Agent B
+    |               |                |                |               |
+    |               |  1. POST /api/token             |               |
+    |               |  (API key)     |                |               |
+    |               |--------------->|                |               |
+    |               |    JWT + peer_id               |               |
+    |               |<---------------|                |               |
+    |               |                |                |               |
+    |               |  2. WS /ws?token=<jwt>          |               |
+    |               |--------------->|                |               |
+    |               |   WS connected |                |               |
+    |               |                |                |               |
+    |               |  3. { type: "register" }        |               |
+    |               |--------------->|                |               |
+    |               |                |                |               |
+    |               |  4. peer_list: [B]              |               |
+    |               |<---------------|                |               |
+    |               |                |                |               |
+    |               |  5. Create RTCPeerConnection    |               |
+    |               |     Create DataChannel          |               |
+    |               |     Generate SDP offer          |               |
+    |               |                |                |               |
+    |               |  6. SDP offer (target: B)       |               |
+    |               |--------------->|                |               |
+    |               |                |  7. relay SDP  |               |
+    |               |                |  offer to B    |               |
+    |               |                |--------------->|               |
+    |               |                |                |               |
+    |               |                |  8. B creates RTCPeerConnection
+    |               |                |     Sets remote description    |
+    |               |                |     Generates SDP answer       |
+    |               |                |                |               |
+    |               |                |  9. SDP answer |               |
+    |               |                |  (target: A)   |               |
+    |               |                |<---------------|               |
+    |               | 10. relay SDP  |                |               |
+    |               |  answer to A   |                |               |
+    |               |<---------------|                |               |
+    |               |                |                |               |
+    |               | 11. ICE candidate (A->B)        |               |
+    |               |--------------->|                |               |
+    |               |                |----relay------>|               |
+    |               |                |                |               |
+    |               |                | 12. ICE candidate (B->A)       |
+    |               |                |<----relay------|               |
+    |               |<---------------|                |               |
+    |               |                |                |               |
+    |               |   ... more ICE candidates ...   |               |
+    |               |<=============>|<==============>|               |
+    |               |                |                |               |
+    |               |                                 |               |
+    |               |  13. ICE connectivity checks    |               |
+    |               |    (direct UDP, STUN, or TURN)  |               |
+    |               |<------------------------------->|               |
+    |               |                                 |               |
+    |               |  14. DTLS handshake (peer-to-peer, no registry) |
+    |               |<------------------------------->|               |
+    |               |                                 |               |
+    |               |  15. SCTP association established|               |
+    |               |<------------------------------->|               |
+    |               |                                 |               |
+    |               |  16. DataChannel OPEN           |               |
+    |               |<===============================>|               |
+    |               |                                 |               |
+    |  17. IPC:     |                                 | 17. IPC:      |
+    |  peer_connected                                 |  peer_connected
+    |<--------------|                                 |-------------->|
+    |               |                                 |               |
+    |               |  18. Ready for MeshMessages     |               |
+    |               |  (task_request, agent_prompt,   |               |
+    |               |   ping/pong, skill_query, ...)  |               |
+    |               |<===============================>|               |
+    |               |                                 |               |
+
+
+Legend
+------
+  ----->   HTTP or WebSocket message (through registry)
+  =====>   Direct peer-to-peer (WebRTC DataChannel, DTLS encrypted)
+  - - ->   IPC (Unix socket, JSON lines)
+
+Phases
+------
+  Steps  1-4:   Authentication and registration
+  Steps  5-10:  SDP offer/answer exchange (signaling via registry)
+  Steps 11-12:  ICE candidate exchange (signaling via registry)
+  Steps 13-15:  Direct connection setup (no registry involvement)
+  Steps 16-18:  DataChannel ready for application messages

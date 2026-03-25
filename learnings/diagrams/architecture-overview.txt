@@ -1,0 +1,61 @@
+chatixia-mesh: Four-Component Architecture Overview
+=====================================================
+Shows the four components (Registry, Sidecar, Agent, Hub), their
+technologies, and all connections between them. Labels distinguish
+control-plane traffic from data-plane traffic.
+
+
+                        CONTROL PLANE
+    . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+    .                                                               .
+    .        +----------------------------------------------+       .
+    .        |         Registry  (Rust / axum)               |       .
+    .        |              port 8080                         |       .
+    .        |                                                |       .
+    .        |  HTTP REST         WebSocket        Hub API    |       .
+    .        |  /api/registry/*   /ws (SDP/ICE)    /api/hub/* |       .
+    .        +----+----------+----------+-----------+----+----+       .
+    .             |          |          |           |    ^            .
+    .             |          |          |           |    |            .
+    . . . . . . .|. . . . . | . . . . .|. . . . . |. . | . . . . . .
+                  |          |          |           |    |
+    HTTP          |   WebSocket   WebSocket        | HTTP polling
+    heartbeat     |          |          |           |  (agents, tasks,
+    (15s)         |          |          |           |   topology)
+                  |          |          |           |    |
+                  v          v          v           |    |
+           +----------+              +----------+  | +--+--------+
+           | Sidecar A|              | Sidecar B|  | |    Hub    |
+           |  (Rust / |              |  (Rust / |  | | (React /  |
+           | webrtc-rs)|             | webrtc-rs)|  | |   Vite)  |
+           +----+-----+              +----+-----+  | +-----------+
+                |    ^                    ^    |    |   Dashboard
+         IPC    |    |     DATA PLANE     |    | IPC
+     (Unix sock,|    |                    |    |(Unix sock,
+      JSON lines)|   |                    |    | JSON lines)
+                |    |  +--------------+  |    |
+                |    +--| WebRTC       |--+    |
+                |       | DataChannel  |       |
+                |       | (P2P, DTLS   |       |
+                |       |  encrypted)  |       |
+                |       +--------------+       |
+                v                              v
+           +----------+              +----------+
+           | Agent A  |              | Agent B  |
+           | (Python) |              | (Python) |
+           |          |              |          |
+           | AI skills|              | AI skills|
+           | LLM calls|              | LLM calls|
+           +----------+              +----------+
+
+
+Connection Summary
+-------------------
+  Agent  <--> Sidecar      Unix socket IPC (JSON lines)
+  Sidecar --> Registry      WebSocket (SDP offers/answers, ICE candidates)
+  Sidecar <-> Sidecar      WebRTC DataChannel (P2P, DTLS encrypted)
+  Hub     --> Registry      HTTP polling (agents, tasks, topology)
+  Agent   --> Registry      HTTP heartbeat (POST /api/hub/heartbeat, ~15s)
+
+Control plane  = Registry, WebSocket signaling, HTTP REST, Hub polling
+Data plane     = WebRTC DataChannels between sidecars (direct P2P)

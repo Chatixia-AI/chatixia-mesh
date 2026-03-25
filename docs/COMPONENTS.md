@@ -129,7 +129,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 |------|---------|
 | `src/main.rs` | Entry point, token exchange, component wiring |
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
-| `src/signaling.rs` | WebSocket client, SDP/ICE relay, peer connection orchestration |
+| `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration |
 | `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding, DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`) |
 | `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels |
 | `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
@@ -395,6 +395,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |
 | `WEBRTC_VS_ALTERNATIVES.md` | WebRTC vs HTTP/gRPC transport comparison, devil's advocate analysis, rebuttals, experiment plan |
+| `DEPLOYMENT_GUIDE.md` | Cross-network deployment: Cloudflare Tunnel, TURN relay, enterprise VPN connectivity |
 | `DESIGN.md` | Atmospheric Luminescence UI design system specification |
 | `meetings/` | Session meeting notes (local only, gitignored) |
 

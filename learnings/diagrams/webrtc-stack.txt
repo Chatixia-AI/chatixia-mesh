@@ -1,0 +1,62 @@
+WebRTC Protocol Stack vs HTTP/gRPC
+====================================
+Side-by-side comparison of the protocol layers used by chatixia-mesh
+(WebRTC DataChannels) versus a traditional HTTP/gRPC approach.
+
+
+    chatixia-mesh (WebRTC)              Traditional (HTTP / gRPC)
+   ============================        ============================
+
+   +-------------------------+         +-------------------------+
+   | MeshMessage (JSON)      |         | REST JSON / Protobuf    |
+   | task_request,            |         | request/response        |
+   | task_response,           |         |                         |
+   | agent_prompt, ...        |         |                         |
+   +-------------------------+         +-------------------------+
+   |   DataChannel API       |         |   HTTP/2 (gRPC) or      |
+   |   (label, protocol,     |         |   HTTP/1.1 (REST)       |
+   |    open/close events)   |         |                         |
+   +-------------------------+         +-------------------------+
+   |   SCTP                  |         |                         |
+   |   - reliable OR         |         |                         |
+   |     unreliable          |         |                         |
+   |   - ordered OR          |         |                         |
+   |     unordered           |         |                         |
+   +-------------------------+         |                         |
+   |   DTLS 1.2              |         |   TLS 1.3              |
+   |   - encryption          |         |   - encryption          |
+   |   - no PKI required     |         |   - requires certs      |
+   |   - self-signed OK      |         |     (CA-signed)         |
+   +-------------------------+         +-------------------------+
+   |   ICE                   |         |                         |
+   |   - connectivity checks |         |        (none)           |
+   |   - candidate gathering |         |                         |
+   |   - STUN binding        |         |                         |
+   +-------------------------+         |                         |
+   |   STUN / TURN           |         |                         |
+   |   - NAT traversal       |         |        (none)           |
+   |   - relay fallback      |         |                         |
+   +-------------------------+         +-------------------------+
+   |         UDP              |         |         TCP             |
+   +-------------------------+         +-------------------------+
+   |         IP               |         |         IP              |
+   +-------------------------+         +-------------------------+
+
+
+Key Differences
+----------------
+
+  Layer         WebRTC                      HTTP/gRPC
+  ----------    -------------------------   -------------------------
+  Transport     UDP (unreliable base)       TCP (reliable base)
+  Reliability   SCTP (configurable)         TCP (always reliable)
+  Encryption    DTLS (no CA needed)         TLS (CA certs required)
+  NAT           ICE + STUN/TURN built-in    Needs VPN or port-forward
+  Topology      Peer-to-peer (direct)       Client-server (routed)
+  Setup cost    5-10s (ICE + DTLS)          <1s (TCP + TLS handshake)
+  Head-of-line  Per-stream (SCTP)           Per-connection (TCP)
+
+Why chatixia-mesh uses WebRTC:
+  1. NAT traversal  -- agents behind firewalls connect without VPNs
+  2. E2E encryption -- registry never sees message content (DTLS)
+  3. No SPOF        -- data flows directly; registry outage is non-fatal

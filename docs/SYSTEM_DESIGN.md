@@ -119,6 +119,8 @@ Default TTL: 300s (5 minutes). Expiry check runs every 30s.
 - TURN credentials: ephemeral, generated via HMAC-SHA1 (coturn `use-auth-secret` mode, 24h TTL)
 - ICE config served via `GET /api/config`
 
+See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for step-by-step cross-network setup (Cloudflare Tunnel, TURN relay, enterprise VPN connectivity).
+
 ## Transport Rationale
 
 WebRTC DataChannels were chosen over HTTP and gRPC for the agent-to-agent data plane. The key factors:
