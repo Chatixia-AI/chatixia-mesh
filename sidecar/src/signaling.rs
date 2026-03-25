@@ -242,6 +242,7 @@ async fn handle_signaling_message(
                     .and_then(|c| c.as_str())
                     .unwrap_or("")
                     .to_string();
+                info!("[ICE] remote candidate from {}: {}", from_peer, candidate);
                 let sdp_mid = msg
                     .payload
                     .get("sdpMid")

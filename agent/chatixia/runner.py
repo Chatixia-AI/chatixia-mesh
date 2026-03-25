@@ -146,6 +146,7 @@ async def run_agent(config: AgentConfig) -> None:
 
     print(f"Agent '{agent_id}' connected to mesh at {registry}")
     print(f"  Sidecar: {config.sidecar.socket}")
+    print(f"  Sidecar log: {client.sidecar_log_path}")
     print(f"  Skills:  {', '.join(config.skills_builtin) or '(none)'}")
     print()
 

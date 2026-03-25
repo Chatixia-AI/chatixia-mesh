@@ -16,7 +16,10 @@ use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
+use webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
+use webrtc::ice_transport::ice_gatherer_state::RTCIceGathererState;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -78,8 +81,27 @@ async fn create_peer_connection() -> Result<Arc<RTCPeerConnection>> {
         .with_interceptor_registry(registry)
         .build();
 
+    let ice_servers = ice_servers_from_env();
+    for s in &ice_servers {
+        info!("[ICE] configured server: {:?}", s.urls);
+    }
+
+    // ICE_TRANSPORT_POLICY=relay forces all traffic through TURN (useful for testing)
+    let ice_transport_policy = match std::env::var("ICE_TRANSPORT_POLICY")
+        .unwrap_or_default()
+        .to_lowercase()
+        .as_str()
+    {
+        "relay" => {
+            info!("[ICE] transport policy: relay-only (forced via ICE_TRANSPORT_POLICY)");
+            RTCIceTransportPolicy::Relay
+        }
+        _ => RTCIceTransportPolicy::All,
+    };
+
     let config = RTCConfiguration {
-        ice_servers: ice_servers_from_env(),
+        ice_servers,
+        ice_transport_policy,
         ..Default::default()
     };
 
@@ -103,6 +125,10 @@ fn setup_ice_forwarding(
         let tid = tid.clone();
         Box::pin(async move {
             if let Some(c) = candidate {
+                info!(
+                    "[ICE] local candidate for {}: type={} proto={} addr={}:{}",
+                    tid, c.typ, c.protocol, c.address, c.port
+                );
                 let init = c.to_json().unwrap();
                 let msg = SignalingMessage {
                     msg_type: "ice_candidate".into(),
@@ -134,6 +160,20 @@ fn setup_ice_forwarding(
             }
             _ => {}
         }
+        Box::pin(async {})
+    }));
+
+    // ICE connection state — tracks the actual ICE transport (checking → connected → completed)
+    let rpid_ice = remote_peer_id.to_string();
+    pc.on_ice_connection_state_change(Box::new(move |state: RTCIceConnectionState| {
+        info!("[ICE] {} ice state: {}", rpid_ice, state);
+        Box::pin(async {})
+    }));
+
+    // ICE gathering state — tracks candidate gathering progress
+    let rpid_gather = remote_peer_id.to_string();
+    pc.on_ice_gathering_state_change(Box::new(move |state: RTCIceGathererState| {
+        info!("[ICE] {} gathering state: {}", rpid_gather, state);
         Box::pin(async {})
     }));
 }

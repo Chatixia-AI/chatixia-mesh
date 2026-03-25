@@ -130,7 +130,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `src/main.rs` | Entry point, token exchange, component wiring |
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
 | `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration |
-| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding, DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`) |
+| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding with diagnostic logging (candidate type/address, connection state, gathering state), DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`), `ICE_TRANSPORT_POLICY=relay` support |
 | `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels |
 | `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
 
@@ -160,7 +160,10 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `SIGNALING_URL` | `ws://localhost:8080/ws` | Registry WebSocket URL |
 | `API_KEY` | `ak_dev_001` | API key for JWT exchange |
 | `TOKEN_URL` | `http://localhost:8080/api/token` | Registry token endpoint |
-| `IPC_SOCKET` | `/tmp/chatixia-sidecar.sock` | Unix socket path for agent IPC |
+| `IPC_SOCKET` | `/tmp/chatixia-sidecar.sock` | Unix socket path for agent IPC. Log file written to same path with `.log` extension |
+| `TURN_URL` | _(none)_ | Optional TURN server URL (e.g. `turn:host:3478`) |
+| `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials |
+| `ICE_TRANSPORT_POLICY` | `all` | Set to `relay` to force all traffic through TURN (for testing) |
 | `RUST_LOG` | `info` | Tracing filter |
 
 ---

@@ -108,6 +108,8 @@ class MeshClient:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._sidecar_proc: subprocess.Popen | None = None
+        self._sidecar_log_file: Any | None = None
+        self._sidecar_log_path: str = ""
         self._handlers: dict[str, list[Callable]] = {}
         self._listen_task: asyncio.Task | None = None
         self._connected = False
@@ -128,20 +130,16 @@ class MeshClient:
                 break
             # Check if sidecar exited early
             if self._sidecar_proc and self._sidecar_proc.poll() is not None:
-                stderr = (self._sidecar_proc.stderr.read() or b"").decode().strip()
                 raise RuntimeError(
                     f"Sidecar exited with code {self._sidecar_proc.returncode}"
-                    + (f": {stderr}" if stderr else "")
+                    f" — check {self._sidecar_log_path}"
                 )
             await asyncio.sleep(0.1)
 
         if not Path(self._socket_path).exists():
-            stderr = ""
-            if self._sidecar_proc and self._sidecar_proc.poll() is not None:
-                stderr = (self._sidecar_proc.stderr.read() or b"").decode().strip()
             raise RuntimeError(
                 f"Sidecar did not create socket at {self._socket_path} within 5s"
-                + (f": {stderr}" if stderr else "")
+                f" — check {self._sidecar_log_path}"
             )
 
         # Connect to sidecar IPC socket
@@ -160,22 +158,28 @@ class MeshClient:
         self.on("peer_list", self._on_peer_list)
 
     async def _spawn_sidecar(self) -> None:
-        """Spawn the Rust sidecar process."""
+        """Spawn the Rust sidecar process, capturing logs to a file."""
         binary = _resolve_sidecar_binary(self._sidecar_binary)
         env = os.environ.copy()
         env["IPC_SOCKET"] = self._socket_path
 
+        # Derive log file path from socket path:
+        #   /tmp/chatixia-sidecar.sock → /tmp/chatixia-sidecar.log
+        self._sidecar_log_path = str(Path(self._socket_path).with_suffix(".log"))
+        self._sidecar_log_file = open(self._sidecar_log_path, "a")  # noqa: SIM115
+
         self._sidecar_proc = subprocess.Popen(
             [binary],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=self._sidecar_log_file,
+            stderr=self._sidecar_log_file,
         )
         logger.info(
-            "sidecar spawned (pid=%d, binary=%s, socket=%s)",
+            "sidecar spawned (pid=%d, binary=%s, socket=%s, log=%s)",
             self._sidecar_proc.pid,
             binary,
             self._socket_path,
+            self._sidecar_log_path,
         )
 
     async def stop(self) -> None:
@@ -188,6 +192,8 @@ class MeshClient:
         if self._sidecar_proc:
             self._sidecar_proc.terminate()
             self._sidecar_proc.wait(timeout=5)
+        if self._sidecar_log_file:
+            self._sidecar_log_file.close()
 
     async def _listen_loop(self) -> None:
         """Read messages from sidecar and dispatch to handlers."""
@@ -326,3 +332,8 @@ class MeshClient:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def sidecar_log_path(self) -> str:
+        """Path to the sidecar log file (populated after start)."""
+        return self._sidecar_log_path
