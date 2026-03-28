@@ -436,3 +436,35 @@ See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full devil's 
 - (-) WebRTC ecosystem is complex — justified by the sidecar pattern encapsulating that complexity
 - (-) Significant engineering overhead for infrastructure that HTTP/gRPC provides out of the box
 - (-) The honest question remains: do enough real deployments span NAT boundaries to justify the cost?
+
+---
+
+## ADR-019: Separate Blog Repository (`chatixia-blogs`)
+
+**Date:** 2026-03-28
+**Status:** Accepted
+
+**Context:** The marketing website (`chatixia.net`) and blog (`blog.chatixia.net`) were served from the same React SPA (`chatixia-docs` repo) — shared Layout, nav, footer, auth, and CSS. The blog subdomain was implemented as a client-side redirect from `/` to `/learn`. This coupling made it difficult to give the blog a distinct visual identity, optimized content stack, or independent deployment pipeline. LangChain's approach — separate sites with different designs for `langchain.com` and `blog.langchain.com` — demonstrated the value of decoupling.
+
+**Decision:** Create a new repository (`chatixia-blogs`) for the blog site at `blog.chatixia.net`. Key choices:
+
+1. **Astro** as the blog framework — static site generation, built-in content collections, RSS feeds, proper `<meta>` tags for SEO/sharing, and React component support where needed.
+2. **Separate Firebase Hosting site** — same Firebase project (`chatixia-ai`) but a second hosting site (`chatixia-blogs`), keeping shared auth (likes/comments) via the same Firestore backend. Custom domain `blog.chatixia.net` to be reassigned from the default `chatixia-ai` site to `chatixia-blogs` via Firebase Console.
+3. **Independent deployment** — its own GitHub Actions CI/CD pipeline. Blog content updates don't risk the landing page.
+4. **Content migration** — blog posts (markdown lessons) will move from `chatixia-docs/src/content/lessons/` to the new repo's Astro content collections. The landing page (`chatixia.net`) retains the "Learn" nav link pointing to `blog.chatixia.net`.
+
+**Consequences:**
+
+- (+) Blog gets a design optimized for content (LangChain-inspired: featured post, card grid, dark theme, proper typography)
+- (+) Static generation = better SEO, faster loads, RSS feed for free
+- (+) Independent deploys — blog and landing page evolve on separate cadences
+- (+) Same Firebase project — auth, likes, and comments work across both subdomains
+- (-) Two repos to maintain instead of one
+- (-) Shared nav/footer must be kept visually consistent manually (no shared component library)
+- (-) Content duplication during migration period
+
+**Related repos:**
+
+- Landing page: `chatixia-docs` (chatixia.net)
+- Blog: `chatixia-blogs` (blog.chatixia.net)
+- Core project: `chatixia-mesh`

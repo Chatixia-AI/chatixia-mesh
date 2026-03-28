@@ -78,6 +78,15 @@ All documentation lives in the `docs/` folder. Always log decisions and keep doc
 
 `CURRICULUM.md` tracks progress of the learning curriculum in `learnings/`. Update `CURRICULUM.md` status when lessons are added or modified.
 
+## Related Repositories
+
+| Repo | Domain | Firebase Hosting Site | Purpose |
+| --- | --- | --- | --- |
+| `chatixia-docs` | chatixia.net | `chatixia-ai` (default) | Landing page / marketing site (React + Vite) |
+| `chatixia-blogs` | blog.chatixia.net | `chatixia-blogs` | Blog site (Astro, static generation) |
+
+All sites share the same Firebase project (`chatixia-ai`) for Auth and Firestore. See ADR-019 for the decision to separate blog from landing page.
+
 ## NEVER commit these files
 
 - **`docs/meetings/`** — Session meeting notes are LOCAL ONLY. They are gitignored. NEVER `git add` them, NEVER use `git add -f` to force them, NEVER include them in commits. They exist for local context between sessions, not for the repo.
