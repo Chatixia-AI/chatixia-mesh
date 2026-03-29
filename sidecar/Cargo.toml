@@ -16,7 +16,7 @@ webrtc = "0.17"
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 reqwest = { version = "0.13", features = ["json"] }
 hmac = "0.12"
-sha1 = "0.10"
+sha1 = "0.11"
 base64 = "0.22"
 futures-util = "0.3"
 dashmap = "6"
