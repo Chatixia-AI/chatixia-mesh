@@ -49,7 +49,7 @@ jobs:
         working-directory: agent
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: ruff check
         run: uvx ruff@0.15.0 check .
       - name: ruff format
@@ -63,7 +63,7 @@ jobs:
         working-directory: agent
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: Install dependencies
         run: uv sync --all-groups
       - name: pytest
