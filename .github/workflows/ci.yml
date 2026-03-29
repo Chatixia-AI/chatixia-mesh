@@ -20,7 +20,7 @@ jobs:
     name: Rust Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -34,7 +34,7 @@ jobs:
     name: Rust Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
@@ -48,7 +48,7 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
       - name: ruff check
         run: uvx ruff@0.15.0 check .
@@ -62,7 +62,7 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v6
       - name: Install dependencies
         run: uv sync --all-groups
@@ -77,7 +77,7 @@ jobs:
       run:
         working-directory: hub
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -99,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Check version bump when agent/ changed
@@ -131,7 +131,7 @@ jobs:
       matrix:
         target: [registry, sidecar, agent]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v3
       - name: Build ${{ matrix.target }}
         uses: docker/build-push-action@v6
