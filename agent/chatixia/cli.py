@@ -182,6 +182,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     print(f"  Provider: {config.provider}")
     skills_count = len(config.skills_builtin)
     print(f"  Skills:   {skills_count} builtin")
+    if config.agent_md:
+        lines = len(config.agent_md.strip().splitlines())
+        print(f"  AGENT.md: loaded ({lines} lines)")
+    else:
+        print("  AGENT.md: not found (optional)")
 
     return 0
 

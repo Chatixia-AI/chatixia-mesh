@@ -103,7 +103,7 @@ The number of tasks **successfully delegated and executed across the agent mesh*
 - Hub dashboard with Atmospheric Luminescence design
 - GitHub Pages documentation site
 - Docker Compose deployment (ADR-015)
-- Automated tests: 16 Rust + 75 Python = 91 tests
+- Automated tests: 106 Rust + 109 Python = 215 tests
 
 ### What's missing
 
@@ -122,8 +122,8 @@ The number of tasks **successfully delegated and executed across the agent mesh*
 | Sidecar (Rust) | ~700 | 6 | Functional |
 | Agent (Python) | ~1,000 | 9 | Functional |
 | Hub (React/TS) | ~600 | 8 | Polished |
-| Tests (Rust) | ~260 | 3 | 16 tests |
-| Tests (Python) | ~350 | 5 | 75 tests |
+| Tests (Rust) | ~600 | 7 | 106 tests |
+| Tests (Python) | ~550 | 6 | 109 tests |
 | Documentation | ~4,500 | 9 | Excellent |
 
 ---
@@ -142,15 +142,15 @@ Ship automated tests, CI/CD, async execution, and persistent storage. Improve DX
 
 | # | Work item | Success criteria | Priority | Inspired by |
 | --- | --- | --- | --- | --- |
-| 0.1 | **Automated test suite** | ≥70% coverage for registry + sidecar (Rust), ≥60% for agent (Python). Tests run in CI. | P0 | — |
+| 0.1 | ~~**Automated test suite**~~ | ~~≥70% coverage for registry + sidecar (Rust), ≥60% for agent (Python). Tests run in CI.~~ **Done.** 106 Rust + 109 Python = 215 tests. All registry modules 100% covered, sidecar coverage expanded to webrtc_peer + mesh. | P0 | — |
 | 0.2 | ~~**CI/CD pipeline**~~ | ~~GitHub Actions: lint → test → build on every PR. Cargo clippy + ruff + tsc --noEmit.~~ **Done.** CI workflow + pre-commit hooks + ruff/clippy/rustfmt config. | P0 | — |
 | 0.3 | ~~**Async task execution**~~ | ~~Long-running skills don't block heartbeat. Use `asyncio.create_task` in Python agent.~~ **Done** (ADR-016). Also routes tasks via P2P DataChannels. | P0 | — |
 | 0.4 | **PostgreSQL persistence** | Agent registry + task queue survive registry restart. Migration from DashMap. (ADR-004 path) | P0 | — |
 | 0.5 | **Docker Compose deployment** | Single `docker compose up` starts registry + sidecar + agent + hub + Postgres + coturn. | P1 | — |
 | 0.6 | **Role-based agent templates** | `chatixia init --role researcher\|analyst\|coordinator` scaffolds agent with default skills, prompt templates, and goal structure. `role:` field in agent.yaml. | P1 | CrewAI |
-| 0.7 | **Markdown agent profiles** | Support optional `AGENT.md` alongside `agent.yaml` for natural-language agent personality, goals, and constraints. CLI reads and injects into LLM system prompt. | P2 | OpenClaw (SOUL.md) |
+| 0.7 | ~~**Markdown agent profiles**~~ | ~~Support optional `AGENT.md` alongside `agent.yaml` for natural-language agent personality, goals, and constraints. CLI reads and injects into LLM system prompt.~~ **Done.** Auto-loaded in `load_config()`, `system_prompt` property merges prompt + AGENT.md, scaffold creates template. | P2 | OpenClaw (SOUL.md) |
 | 0.8 | ~~**Fix compiler warnings**~~ | ~~Zero warnings in `cargo build --release`. Remove dead Heartbeat struct fields.~~ **Done.** All clippy + ruff warnings resolved. | P2 | — |
-| 0.9 | **Hostname in agent registration** | Agent reports actual hostname (currently empty string). | P2 | — |
+| 0.9 | ~~**Hostname in agent registration**~~ | ~~Agent reports actual hostname (currently empty string).~~ **Done.** `_hostname()` helper with `socket.gethostname() → platform.node() → "unknown"` fallback chain. | P2 | — |
 | 0.10 | **Publish chatixia 0.3.0** | PyPI release with async task execution + role templates + bug fixes. | P1 | — |
 
 #### Key decisions

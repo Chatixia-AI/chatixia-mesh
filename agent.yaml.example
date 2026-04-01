@@ -8,6 +8,14 @@ registry: "http://localhost:8080"
 provider: azure
 model: gpt-4o
 
+# System prompt (inline). For richer agent profiles, use AGENT.md instead.
+# prompt: |
+#   You are a helpful assistant.
+
+# Agent profile: place an AGENT.md file alongside this agent.yaml
+# to define personality, goals, and constraints in natural language.
+# See: https://github.com/Chatixia-AI/chatixia-mesh#agentmd
+
 # Sidecar configuration
 # Install: cargo install --git https://github.com/Chatixia-AI/chatixia-mesh chatixia-sidecar
 sidecar:

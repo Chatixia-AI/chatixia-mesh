@@ -120,4 +120,70 @@ mod tests {
         assert_eq!(json["from_peer"], "sc-1");
         assert_eq!(json["to_peer"], "sc-2");
     }
+
+    #[test]
+    fn test_topology_response_empty() {
+        let resp = TopologyResponse {
+            nodes: vec![],
+            mesh_edges: vec![],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 0);
+        assert_eq!(json["mesh_edges"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_topology_response_with_multiple_nodes() {
+        let resp = TopologyResponse {
+            nodes: vec![
+                TopologyNode {
+                    agent_id: "a1".into(),
+                    ip: "10.0.0.1".into(),
+                    port: 8000,
+                    hostname: "host1".into(),
+                    sidecar_peer_id: "sc-1".into(),
+                    mode: "auto".into(),
+                    skills_count: 3,
+                    health: "active".into(),
+                    mesh_peers: vec!["sc-2".into()],
+                },
+                TopologyNode {
+                    agent_id: "a2".into(),
+                    ip: "10.0.0.2".into(),
+                    port: 8000,
+                    hostname: "host2".into(),
+                    sidecar_peer_id: "sc-2".into(),
+                    mode: "interactive".into(),
+                    skills_count: 5,
+                    health: "active".into(),
+                    mesh_peers: vec!["sc-1".into()],
+                },
+            ],
+            mesh_edges: vec![MeshEdge {
+                from_peer: "sc-1".into(),
+                to_peer: "sc-2".into(),
+            }],
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 2);
+        assert_eq!(json["mesh_edges"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_topology_node_empty_mesh_peers() {
+        let node = TopologyNode {
+            agent_id: "solo".into(),
+            ip: "127.0.0.1".into(),
+            port: 8000,
+            hostname: "localhost".into(),
+            sidecar_peer_id: "sc-solo".into(),
+            mode: "auto".into(),
+            skills_count: 0,
+            health: "active".into(),
+            mesh_peers: vec![],
+        };
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(json["mesh_peers"].as_array().unwrap().len(), 0);
+        assert_eq!(json["skills_count"], 0);
+    }
 }

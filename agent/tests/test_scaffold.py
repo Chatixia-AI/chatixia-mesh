@@ -63,3 +63,31 @@ class TestWriteScaffold:
         write_scaffold("test-agent", str(tmp_path))
         content = (tmp_path / "agent.yaml").read_text()
         assert "cargo install" in content
+
+    def test_creates_agent_md(self, tmp_path):
+        write_scaffold("my-agent", str(tmp_path))
+        md_file = tmp_path / "AGENT.md"
+        assert md_file.exists()
+        content = md_file.read_text()
+        assert "my-agent" in content
+        assert "Personality" in content
+        assert "Goals" in content
+        assert "Constraints" in content
+
+    def test_agent_md_name_substitution(self, tmp_path):
+        write_scaffold("custom-bot", str(tmp_path))
+        content = (tmp_path / "AGENT.md").read_text()
+        assert "custom-bot" in content
+
+    def test_does_not_overwrite_agent_md(self, tmp_path):
+        existing = "# My Custom Profile"
+        (tmp_path / "AGENT.md").write_text(existing)
+        write_scaffold("test-agent", str(tmp_path))
+        assert (tmp_path / "AGENT.md").read_text() == existing
+
+    def test_scaffold_creates_all_files(self, tmp_path):
+        write_scaffold("full-agent", str(tmp_path))
+        assert (tmp_path / "agent.yaml").exists()
+        assert (tmp_path / "AGENT.md").exists()
+        assert (tmp_path / ".env.example").exists()
+        assert (tmp_path / ".gitignore").exists()

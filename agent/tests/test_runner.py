@@ -196,3 +196,94 @@ class TestUpdateTask:
         mock_post.side_effect = ConnectionError("network down")
         # Should not raise
         _update_task("http://localhost:8080", "ak_test", "task-789", "failed", error="oops")
+
+
+class TestHostname:
+    """Test the _hostname helper."""
+
+    def test_hostname_returns_nonempty_string(self):
+        from chatixia.runner import _hostname
+
+        result = _hostname()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_hostname_not_unknown_on_real_machine(self):
+        from chatixia.runner import _hostname
+
+        result = _hostname()
+        # On a real machine, should be a real hostname, not "unknown"
+        assert result != "unknown"
+
+    @patch("chatixia.runner.socket.gethostname", return_value="")
+    @patch("chatixia.runner.platform.node", return_value="fallback-host")
+    def test_hostname_falls_back_to_platform_node(self, mock_platform, mock_socket):
+        from chatixia.runner import _hostname
+
+        result = _hostname()
+        assert result == "fallback-host"
+
+    @patch("chatixia.runner.socket.gethostname", return_value="")
+    @patch("chatixia.runner.platform.node", return_value="")
+    def test_hostname_falls_back_to_unknown(self, mock_platform, mock_socket):
+        from chatixia.runner import _hostname
+
+        result = _hostname()
+        assert result == "unknown"
+
+    @patch("chatixia.runner.requests.post")
+    def test_register_sends_hostname(self, mock_post):
+        from chatixia.runner import _register
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        config = AgentConfig(name="hostname-test")
+        _register("http://localhost:8080", "ak_test", "hostname-test", config)
+
+        call_kwargs = mock_post.call_args
+        json_body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+        assert "hostname" in json_body
+        assert isinstance(json_body["hostname"], str)
+        assert len(json_body["hostname"]) > 0
+
+
+class TestUserIntervention:
+    """Test the handle_user_intervention skill handler."""
+
+    def test_empty_message(self):
+        from chatixia.runner import handle_user_intervention
+
+        result = handle_user_intervention()
+        assert "empty" in result.lower()
+
+    def test_with_message(self):
+        from chatixia.runner import handle_user_intervention
+
+        result = handle_user_intervention(message="please stop task-1")
+        assert "Received" in result
+        assert "please stop task-1" in result
+
+    def test_ignores_extra_kwargs(self):
+        from chatixia.runner import handle_user_intervention
+
+        result = handle_user_intervention(message="test", extra_param="ignored")
+        assert "Received" in result
+
+
+class TestSkillHandlers:
+    """Test SKILL_HANDLERS mapping."""
+
+    def test_all_skills_registered(self):
+        from chatixia.runner import SKILL_HANDLERS
+
+        expected = ["list_agents", "find_agent", "delegate", "mesh_send", "mesh_broadcast", "user_intervention"]
+        for skill in expected:
+            assert skill in SKILL_HANDLERS, f"Missing skill: {skill}"
+
+    def test_handlers_are_callable(self):
+        from chatixia.runner import SKILL_HANDLERS
+
+        for name, handler in SKILL_HANDLERS.items():
+            assert callable(handler), f"Handler for {name} is not callable"

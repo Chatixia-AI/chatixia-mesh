@@ -259,4 +259,143 @@ mod tests {
         assert_eq!(ipc_types::PEER_DISCONNECTED, "peer_disconnected");
         assert_eq!(ipc_types::PEER_LIST, "peer_list");
     }
+
+    // ─── Edge cases ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_signaling_message_deserialize_missing_optional_fields() {
+        // target_id and payload are optional via defaults
+        let raw = r#"{"type":"register","peer_id":"p1"}"#;
+        let msg: SignalingMessage = serde_json::from_str(raw).unwrap();
+        assert_eq!(msg.msg_type, "register");
+        assert_eq!(msg.peer_id, "p1");
+        assert_eq!(msg.target_id, None);
+        assert_eq!(msg.payload, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_signaling_message_with_complex_payload() {
+        let msg = SignalingMessage {
+            msg_type: "offer".into(),
+            peer_id: "peer-1".into(),
+            target_id: Some("peer-2".into()),
+            payload: serde_json::json!({
+                "sdp": "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\n",
+                "type": "offer"
+            }),
+        };
+        let json_str = serde_json::to_string(&msg).unwrap();
+        let decoded: SignalingMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(decoded.payload["sdp"], "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\n");
+    }
+
+    #[test]
+    fn test_mesh_message_with_nested_payload() {
+        let msg = MeshMessage {
+            msg_type: mesh_types::TASK_REQUEST.into(),
+            request_id: "req-99".into(),
+            source_agent: "a".into(),
+            target_agent: "b".into(),
+            payload: serde_json::json!({
+                "skill": "delegate",
+                "params": {"query": "test", "depth": 3},
+                "history": [{"role": "user", "content": "hello"}]
+            }),
+        };
+        let json_str = serde_json::to_string(&msg).unwrap();
+        let decoded: MeshMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(decoded.payload["params"]["depth"], 3);
+        assert_eq!(decoded.payload["history"][0]["role"], "user");
+    }
+
+    #[test]
+    fn test_ipc_message_empty_payload() {
+        let raw = r#"{"type":"list_peers"}"#;
+        let msg: IpcMessage = serde_json::from_str(raw).unwrap();
+        assert_eq!(msg.msg_type, "list_peers");
+        assert_eq!(msg.payload, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_ipc_message_send_command_structure() {
+        let msg = IpcMessage {
+            msg_type: ipc_types::SEND.into(),
+            payload: serde_json::json!({
+                "target_peer": "peer-abc",
+                "message": {
+                    "type": "task_request",
+                    "request_id": "r1",
+                    "source_agent": "me",
+                    "target_agent": "them",
+                    "payload": {}
+                }
+            }),
+        };
+        let json_str = serde_json::to_string(&msg).unwrap();
+        let decoded: IpcMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(decoded.payload["target_peer"], "peer-abc");
+        // The inner message should parse as a MeshMessage
+        let inner: MeshMessage =
+            serde_json::from_value(decoded.payload["message"].clone()).unwrap();
+        assert_eq!(inner.msg_type, "task_request");
+        assert_eq!(inner.request_id, "r1");
+    }
+
+    #[test]
+    fn test_ipc_broadcast_command_structure() {
+        let msg = IpcMessage {
+            msg_type: ipc_types::BROADCAST.into(),
+            payload: serde_json::json!({
+                "message": {
+                    "type": "agent_prompt",
+                    "source_agent": "broadcaster",
+                    "target_agent": "*",
+                    "payload": {"message": "hello all"}
+                }
+            }),
+        };
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["type"], "broadcast");
+        let inner: MeshMessage =
+            serde_json::from_value(json["payload"]["message"].clone()).unwrap();
+        assert_eq!(inner.target_agent, "*");
+    }
+
+    #[test]
+    fn test_ipc_peer_list_response_structure() {
+        let msg = IpcMessage {
+            msg_type: ipc_types::PEER_LIST.into(),
+            payload: serde_json::json!({
+                "peers": ["peer-1", "peer-2", "peer-3"]
+            }),
+        };
+        let json = serde_json::to_value(&msg).unwrap();
+        let peers = json["payload"]["peers"].as_array().unwrap();
+        assert_eq!(peers.len(), 3);
+    }
+
+    #[test]
+    fn test_mesh_message_all_types_serialize() {
+        // Verify all mesh_types constants can be used in MeshMessage
+        let types = [
+            mesh_types::PING, mesh_types::PONG,
+            mesh_types::TASK_REQUEST, mesh_types::TASK_RESPONSE,
+            mesh_types::TASK_STREAM_CHUNK, mesh_types::SKILL_QUERY,
+            mesh_types::SKILL_RESPONSE, mesh_types::AGENT_STATUS,
+            mesh_types::AGENT_PROMPT, mesh_types::AGENT_RESPONSE,
+            mesh_types::AGENT_STREAM_CHUNK,
+        ];
+        for t in types {
+            let msg = MeshMessage {
+                msg_type: t.into(),
+                request_id: String::new(),
+                source_agent: String::new(),
+                target_agent: String::new(),
+                payload: serde_json::Value::Null,
+            };
+            let json = serde_json::to_string(&msg).unwrap();
+            let decoded: MeshMessage = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded.msg_type, t);
+        }
+    }
 }

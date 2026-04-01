@@ -41,6 +41,9 @@ class AgentConfig:
     skills_dirs: list[str] = field(default_factory=list)
     skills_disabled: list[str] = field(default_factory=list)
 
+    # Agent profile (AGENT.md content, auto-loaded if present)
+    agent_md: str = ""
+
     # Runtime
     data_dir: str = ".chatixia"
     max_turns: int = 10
@@ -48,6 +51,16 @@ class AgentConfig:
 
     # Internal: directory containing agent.yaml
     _source_dir: Path = field(default_factory=Path.cwd)
+
+    @property
+    def system_prompt(self) -> str:
+        """Combined system prompt from ``prompt`` + ``AGENT.md``."""
+        parts: list[str] = []
+        if self.prompt:
+            parts.append(self.prompt.strip())
+        if self.agent_md:
+            parts.append(self.agent_md.strip())
+        return "\n\n".join(parts)
 
     def resolve_path(self, path: str) -> Path:
         """Resolve a path relative to the manifest directory."""
@@ -93,7 +106,14 @@ def load_config(path: str | Path) -> AgentConfig:
     with open(path, encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh) or {}
 
-    return _parse_config(raw, source_dir)
+    config = _parse_config(raw, source_dir)
+
+    # Auto-load AGENT.md if present alongside agent.yaml
+    agent_md_path = source_dir / "AGENT.md"
+    if agent_md_path.exists():
+        config.agent_md = agent_md_path.read_text(encoding="utf-8")
+
+    return config
 
 
 def _parse_config(raw: dict[str, Any], source_dir: Path) -> AgentConfig:

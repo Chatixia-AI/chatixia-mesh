@@ -178,9 +178,9 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 
 | Command | Description |
 |---------|-------------|
-| `chatixia init [name] [-d dir]` | Scaffold a new agent into a `<name>/` subdirectory (`agent.yaml`, `.env.example`, `.gitignore`). Use `-d .` to scaffold in the current directory. |
+| `chatixia init [name] [-d dir]` | Scaffold a new agent into a `<name>/` subdirectory (`agent.yaml`, `AGENT.md`, `.env.example`, `.gitignore`). Use `-d .` to scaffold in the current directory. |
 | `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat, execute tasks |
-| `chatixia validate [manifest]` | Validate manifest and print summary |
+| `chatixia validate [manifest]` | Validate manifest and print summary (shows AGENT.md status) |
 | `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
 | `chatixia -V` | Show version |
 
@@ -190,9 +190,9 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 |------|---------|
 | `chatixia/__init__.py` | Package version |
 | `chatixia/cli.py` | CLI entry point, argument parsing, subcommand dispatch |
-| `chatixia/scaffold.py` | `chatixia init` — writes `agent.yaml`, `.env.example`, `.gitignore` templates |
-| `chatixia/config.py` | `AgentConfig` dataclass, YAML manifest parser (`load_config`) |
-| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats, async task execution, P2P task handler |
+| `chatixia/scaffold.py` | `chatixia init` — writes `agent.yaml`, `AGENT.md`, `.env.example`, `.gitignore` templates |
+| `chatixia/config.py` | `AgentConfig` dataclass, YAML manifest parser (`load_config`), auto-loads `AGENT.md`, `system_prompt` property |
+| `chatixia/runner.py` | `chatixia run` — registers with registry, spawns sidecar, connects mesh, heartbeats, async task execution, P2P task handler, `_hostname()` helper |
 
 ### Core Modules
 
@@ -208,7 +208,7 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 
 | Class | Module | Description |
 |-------|--------|-------------|
-| `AgentConfig` | `chatixia.config` | Dataclass: agent name, role, description, registry URL, sidecar config, LLM provider, skills, runtime settings |
+| `AgentConfig` | `chatixia.config` | Dataclass: agent name, role, description, registry URL, sidecar config, LLM provider, skills, runtime settings, `agent_md` (auto-loaded from AGENT.md), `system_prompt` property (prompt + AGENT.md) |
 | `SidecarConfig` | `chatixia.config` | Dataclass: `binary`, `api_key`, `socket` |
 | `MeshMessage` | `chatixia.core.mesh_client` | Dataclass: `msg_type`, `request_id`, `source_agent`, `target_agent`, `payload` |
 | `MeshClient` | `chatixia.core.mesh_client` | Async IPC client — spawns sidecar, connects to socket, dispatches messages, correlates request/response, tracks connected peers. Sidecar binary resolved via: configured path → `SIDECAR_BINARY` env var → PATH lookup. |
@@ -393,8 +393,8 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-019) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-018) |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |
 | `WEBRTC_VS_ALTERNATIVES.md` | WebRTC vs HTTP/gRPC transport comparison, devil's advocate analysis, rebuttals, experiment plan |

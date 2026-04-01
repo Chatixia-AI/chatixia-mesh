@@ -55,7 +55,7 @@ fn ice_servers_from_env() -> Vec<RTCIceServer> {
     servers
 }
 
-fn generate_turn_credentials(secret: &str, ttl_secs: u64) -> (String, String) {
+pub(crate) fn generate_turn_credentials(secret: &str, ttl_secs: u64) -> (String, String) {
     let expiry = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -334,4 +334,103 @@ pub async fn handle_offer(
 
     info!("[WEBRTC] answer sent to {}", remote_peer_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_turn_credentials_format() {
+        let (username, password) = generate_turn_credentials("test-secret", 86400);
+        // Username should be "{expiry}:mesh"
+        assert!(username.ends_with(":mesh"), "username should end with ':mesh'");
+        let expiry_str = username.split(':').next().unwrap();
+        let expiry: u64 = expiry_str.parse().expect("expiry should be a number");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // Expiry should be roughly now + 86400
+        assert!(expiry > now + 86300);
+        assert!(expiry < now + 86500);
+        // Password should be base64-encoded (non-empty, valid base64)
+        assert!(!password.is_empty());
+        general_purpose::STANDARD
+            .decode(&password)
+            .expect("password should be valid base64");
+    }
+
+    #[test]
+    fn test_generate_turn_credentials_different_secrets_differ() {
+        let (_, pass1) = generate_turn_credentials("secret-1", 86400);
+        let (_, pass2) = generate_turn_credentials("secret-2", 86400);
+        assert_ne!(pass1, pass2, "different secrets should produce different passwords");
+    }
+
+    #[test]
+    fn test_generate_turn_credentials_deterministic_for_same_input() {
+        // Same secret + TTL within same second should produce the same result
+        let (u1, p1) = generate_turn_credentials("fixed-secret", 86400);
+        let (u2, p2) = generate_turn_credentials("fixed-secret", 86400);
+        assert_eq!(u1, u2);
+        assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn test_generate_turn_credentials_short_ttl() {
+        let (username, _) = generate_turn_credentials("s", 60);
+        let expiry_str = username.split(':').next().unwrap();
+        let expiry: u64 = expiry_str.parse().unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(expiry >= now + 59);
+        assert!(expiry <= now + 61);
+    }
+
+    #[test]
+    fn test_ice_servers_from_env_default() {
+        // Clear TURN env vars to test default behavior
+        std::env::remove_var("TURN_URL");
+        std::env::remove_var("TURN_SECRET");
+        std::env::remove_var("TURN_USERNAME");
+        std::env::remove_var("TURN_PASSWORD");
+        let servers = ice_servers_from_env();
+        assert_eq!(servers.len(), 1, "should have only STUN when no TURN configured");
+        assert!(servers[0].urls[0].starts_with("stun:"));
+    }
+
+    #[test]
+    fn test_ice_servers_from_env_with_turn_secret() {
+        std::env::set_var("TURN_URL", "turn:my-turn.example.com:3478");
+        std::env::set_var("TURN_SECRET", "my-shared-secret");
+        std::env::remove_var("TURN_USERNAME");
+        std::env::remove_var("TURN_PASSWORD");
+        let servers = ice_servers_from_env();
+        assert_eq!(servers.len(), 2, "should have STUN + TURN");
+        assert_eq!(servers[1].urls[0], "turn:my-turn.example.com:3478");
+        assert!(servers[1].username.ends_with(":mesh"));
+        assert!(!servers[1].credential.is_empty());
+        // Cleanup
+        std::env::remove_var("TURN_URL");
+        std::env::remove_var("TURN_SECRET");
+    }
+
+    #[test]
+    fn test_ice_servers_from_env_with_static_credentials() {
+        std::env::set_var("TURN_URL", "turn:turn.local:3478");
+        std::env::remove_var("TURN_SECRET");
+        std::env::set_var("TURN_USERNAME", "user1");
+        std::env::set_var("TURN_PASSWORD", "pass1");
+        let servers = ice_servers_from_env();
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[1].username, "user1");
+        assert_eq!(servers[1].credential, "pass1");
+        // Cleanup
+        std::env::remove_var("TURN_URL");
+        std::env::remove_var("TURN_USERNAME");
+        std::env::remove_var("TURN_PASSWORD");
+    }
 }

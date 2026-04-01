@@ -85,6 +85,26 @@ AZURE_OPENAI_DEPLOYMENT=gpt-4o
 # LOG_LEVEL=WARNING
 """
 
+_AGENT_MD_TEMPLATE = """\
+# {name}
+
+## Personality
+
+You are a collaborative AI agent connected to the Chatixia mesh network.
+
+## Goals
+
+- Help users accomplish tasks efficiently
+- Collaborate with other mesh agents when needed
+- Ask for clarification when instructions are ambiguous
+
+## Constraints
+
+- Only delegate tasks to other agents when you lack the required skill
+- Respect rate limits and token budgets
+- Never fabricate data — say "I don't know" when uncertain
+"""
+
 _GITIGNORE = """\
 .env
 .chatixia/
@@ -110,6 +130,13 @@ def write_scaffold(name: str, directory: str = ".") -> Path:
         encoding="utf-8",
     )
 
+    agent_md_path = dir_path / "AGENT.md"
+    if not agent_md_path.exists():
+        agent_md_path.write_text(
+            _AGENT_MD_TEMPLATE.format(name=name),
+            encoding="utf-8",
+        )
+
     env_example = dir_path / ".env.example"
     if not env_example.exists():
         env_example.write_text(_ENV_EXAMPLE, encoding="utf-8")
@@ -119,11 +146,13 @@ def write_scaffold(name: str, directory: str = ".") -> Path:
         gitignore.write_text(_GITIGNORE, encoding="utf-8")
 
     print(f"Created {manifest_path}")
+    print(f"Created {agent_md_path}")
     print()
     print("Next steps:")
-    print("  1. cp .env.example .env        # Fill in your credentials")
-    print("  2. chatixia validate            # Check everything is correct")
-    print("  3. chatixia pair <code>         # Pair with a mesh (get code from admin)")
-    print("  4. chatixia run                 # Connect to the mesh")
+    print("  1. Edit AGENT.md                # Define personality, goals, constraints")
+    print("  2. cp .env.example .env        # Fill in your credentials")
+    print("  3. chatixia validate            # Check everything is correct")
+    print("  4. chatixia pair <code>         # Pair with a mesh (get code from admin)")
+    print("  5. chatixia run                 # Connect to the mesh")
 
     return manifest_path

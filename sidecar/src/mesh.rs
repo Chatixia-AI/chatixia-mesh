@@ -183,4 +183,132 @@ mod tests {
         mgr.remove_peer("ghost-peer");
         assert!(mgr.connected_peers().is_empty());
     }
+
+    #[test]
+    fn test_add_peer_and_get_pc() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mgr = MeshManager::new("local-5".into());
+            let api = webrtc::api::APIBuilder::new().build();
+            let pc = std::sync::Arc::new(
+                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                    .await
+                    .unwrap(),
+            );
+            mgr.add_peer("remote-1", pc.clone());
+            assert!(mgr.get_pc("remote-1").is_some());
+            assert!(mgr.get_pc("nonexistent").is_none());
+            // Peer was added but no channel — connected_peers should be empty
+            assert!(mgr.connected_peers().is_empty());
+            pc.close().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn test_remove_peer_cleans_up() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mgr = MeshManager::new("local-6".into());
+            let api = webrtc::api::APIBuilder::new().build();
+            let pc = std::sync::Arc::new(
+                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                    .await
+                    .unwrap(),
+            );
+            mgr.add_peer("remote-2", pc.clone());
+            assert!(mgr.get_pc("remote-2").is_some());
+            mgr.remove_peer("remote-2");
+            assert!(mgr.get_pc("remote-2").is_none());
+            pc.close().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn test_set_channel_and_connected_peers() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mgr = MeshManager::new("local-7".into());
+            let api = webrtc::api::APIBuilder::new().build();
+            let pc = std::sync::Arc::new(
+                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                    .await
+                    .unwrap(),
+            );
+            let dc = pc.create_data_channel("test", None).await.unwrap();
+            mgr.add_peer("remote-3", pc.clone());
+            mgr.set_channel("remote-3", dc);
+            assert!(mgr.is_connected("remote-3"));
+            assert_eq!(mgr.connected_peers(), vec!["remote-3".to_string()]);
+            pc.close().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn test_clear_all_peers() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mgr = MeshManager::new("local-8".into());
+            let api = webrtc::api::APIBuilder::new().build();
+            let pc1 = std::sync::Arc::new(
+                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                    .await
+                    .unwrap(),
+            );
+            let pc2 = std::sync::Arc::new(
+                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                    .await
+                    .unwrap(),
+            );
+            let dc1 = pc1.create_data_channel("c1", None).await.unwrap();
+            let dc2 = pc2.create_data_channel("c2", None).await.unwrap();
+            mgr.add_peer("p1", pc1);
+            mgr.add_peer("p2", pc2);
+            mgr.set_channel("p1", dc1);
+            mgr.set_channel("p2", dc2);
+            assert_eq!(mgr.connected_peers().len(), 2);
+            mgr.clear_all_peers().await;
+            assert!(mgr.connected_peers().is_empty());
+            assert!(mgr.get_pc("p1").is_none());
+            assert!(mgr.get_pc("p2").is_none());
+        });
+    }
+
+    #[test]
+    fn test_multiple_peers_ordering() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let mgr = MeshManager::new("local-9".into());
+            let api = webrtc::api::APIBuilder::new().build();
+            for i in 0..5 {
+                let pc = std::sync::Arc::new(
+                    api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
+                        .await
+                        .unwrap(),
+                );
+                let dc = pc.create_data_channel("ch", None).await.unwrap();
+                mgr.add_peer(&format!("peer-{}", i), pc);
+                mgr.set_channel(&format!("peer-{}", i), dc);
+            }
+            let peers = mgr.connected_peers();
+            assert_eq!(peers.len(), 5);
+            for i in 0..5 {
+                assert!(mgr.is_connected(&format!("peer-{}", i)));
+            }
+        });
+    }
 }

@@ -381,4 +381,110 @@ mod tests {
         assert_eq!(caps.goals_count, 0);
         assert_eq!(caps.mode, "");
     }
+
+    #[test]
+    fn test_agent_info_full_deserialization() {
+        let raw = r#"{
+            "agent_id": "test-1",
+            "hostname": "my-host",
+            "ip": "10.0.0.5",
+            "port": 9090,
+            "sidecar_peer_id": "sc-test-1",
+            "capabilities": {
+                "skills": ["delegate", "search"],
+                "mcp_servers": ["memory"],
+                "goals_count": 2,
+                "mode": "auto"
+            },
+            "status": "running",
+            "mode": "auto"
+        }"#;
+        let info: AgentInfo = serde_json::from_str(raw).unwrap();
+        assert_eq!(info.agent_id, "test-1");
+        assert_eq!(info.hostname, "my-host");
+        assert_eq!(info.ip, "10.0.0.5");
+        assert_eq!(info.port, 9090);
+        assert_eq!(info.sidecar_peer_id, "sc-test-1");
+        assert_eq!(info.capabilities.skills.len(), 2);
+        assert_eq!(info.capabilities.mcp_servers.len(), 1);
+        assert_eq!(info.capabilities.goals_count, 2);
+    }
+
+    #[test]
+    fn test_heartbeat_deserialization() {
+        let raw = r#"{
+            "agent_id": "hb-agent",
+            "hostname": "pi-cluster",
+            "sidecar_peer_id": "sc-hb",
+            "skill_names": ["delegate", "mesh_send"]
+        }"#;
+        let hb: Heartbeat = serde_json::from_str(raw).unwrap();
+        assert_eq!(hb.agent_id, "hb-agent");
+        assert_eq!(hb.hostname, "pi-cluster");
+        assert_eq!(hb.sidecar_peer_id, "sc-hb");
+        assert_eq!(hb.skill_names.len(), 2);
+    }
+
+    #[test]
+    fn test_heartbeat_defaults() {
+        let raw = r#"{"agent_id":"minimal"}"#;
+        let hb: Heartbeat = serde_json::from_str(raw).unwrap();
+        assert_eq!(hb.agent_id, "minimal");
+        assert_eq!(hb.hostname, "");
+        assert_eq!(hb.ip, "");
+        assert_eq!(hb.port, default_port()); // default is 8000
+        assert!(hb.skill_names.is_empty());
+    }
+
+    #[test]
+    fn test_register_overwrites_existing() {
+        let reg = RegistryState::new();
+        let a1 = make_agent("a1", vec!["old_skill".into()], "active");
+        reg.agents.insert("a1".into(), a1);
+        let a1_updated = make_agent("a1", vec!["new_skill".into()], "active");
+        reg.agents.insert("a1".into(), a1_updated);
+        let found = reg.get("a1").unwrap();
+        assert_eq!(found.info.capabilities.skills, vec!["new_skill"]);
+    }
+
+    #[test]
+    fn test_deregister_agent() {
+        let reg = RegistryState::new();
+        reg.agents
+            .insert("a1".into(), make_agent("a1", vec![], "active"));
+        reg.agents
+            .insert("a2".into(), make_agent("a2", vec![], "active"));
+        assert_eq!(reg.list().len(), 2);
+        reg.agents.remove("a1");
+        assert_eq!(reg.list().len(), 1);
+        assert!(reg.get("a1").is_none());
+        assert!(reg.get("a2").is_some());
+    }
+
+    #[test]
+    fn test_find_by_skill_multiple_matches() {
+        let reg = RegistryState::new();
+        reg.agents.insert(
+            "a1".into(),
+            make_agent("a1", vec!["delegate".into()], "active"),
+        );
+        reg.agents.insert(
+            "a2".into(),
+            make_agent("a2", vec!["delegate".into(), "search".into()], "active"),
+        );
+        let results = reg.find_by_skill("delegate");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_agent_record_serialization() {
+        let record = make_agent("ser-test", vec!["skill1".into()], "active");
+        let json = serde_json::to_value(&record).unwrap();
+        // AgentInfo is flattened — fields are at top level, not under "info"
+        assert_eq!(json["agent_id"], "ser-test");
+        assert_eq!(json["health"], "active");
+        assert!(json["registered_at"].is_string());
+        assert!(json["last_heartbeat"].is_string());
+        assert_eq!(json["capabilities"]["skills"][0], "skill1");
+    }
 }

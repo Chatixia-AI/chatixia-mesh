@@ -277,4 +277,89 @@ mod tests {
         assert_eq!(json["state"], "pending");
         assert_eq!(json["target_agent_id"], "a1");
     }
+
+    #[test]
+    fn test_get_pending_skips_assigned() {
+        let hub = HubState::new();
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "a1", "assigned"));
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_get_pending_skips_failed() {
+        let hub = HubState::new();
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "a1", "failed"));
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_get_pending_multiple_tasks() {
+        let hub = HubState::new();
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "search", "a1", "pending"));
+        hub.tasks
+            .insert("t2".into(), make_task("t2", "analyze", "a1", "pending"));
+        hub.tasks
+            .insert("t3".into(), make_task("t3", "search", "a2", "pending"));
+        // a1 should get t1 (targeted) and potentially t2 (also targeted)
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert!(result.len() >= 1);
+    }
+
+    #[test]
+    fn test_get_pending_no_matching_skill() {
+        let hub = HubState::new();
+        hub.tasks
+            .insert("t1".into(), make_task("t1", "rare_skill", "", "pending"));
+        let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_task_submission_deserialization() {
+        let raw = r#"{
+            "skill": "delegate",
+            "target_agent_id": "agent-b",
+            "source_agent_id": "agent-a",
+            "payload": {"message": "do something"},
+            "ttl": 120
+        }"#;
+        let sub: TaskSubmission = serde_json::from_str(raw).unwrap();
+        assert_eq!(sub.skill, "delegate");
+        assert_eq!(sub.target_agent_id, "agent-b");
+        assert_eq!(sub.source_agent_id, "agent-a");
+        assert_eq!(sub.ttl, 120);
+    }
+
+    #[test]
+    fn test_task_submission_defaults() {
+        let raw = r#"{"skill":"search"}"#;
+        let sub: TaskSubmission = serde_json::from_str(raw).unwrap();
+        assert_eq!(sub.skill, "search");
+        assert_eq!(sub.target_agent_id, "");
+        assert_eq!(sub.source_agent_id, "");
+        assert_eq!(sub.ttl, 300); // default_ttl
+    }
+
+    #[test]
+    fn test_task_update_deserialization() {
+        let raw = r#"{"state":"completed","result":"done","error":""}"#;
+        let update: TaskUpdate = serde_json::from_str(raw).unwrap();
+        assert_eq!(update.state, "completed");
+        assert_eq!(update.result, "done");
+        assert_eq!(update.error, "");
+    }
+
+    #[test]
+    fn test_task_update_defaults() {
+        let raw = r#"{"state":"failed"}"#;
+        let update: TaskUpdate = serde_json::from_str(raw).unwrap();
+        assert_eq!(update.state, "failed");
+        assert_eq!(update.result, "");
+        assert_eq!(update.error, "");
+    }
 }

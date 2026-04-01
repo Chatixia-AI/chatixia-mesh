@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import platform
 import signal
 import socket
 from typing import Any, Awaitable, Callable
@@ -22,6 +23,12 @@ from chatixia.core.mesh_skills import (
 )
 
 logger = logging.getLogger("chatixia.runner")
+
+
+def _hostname() -> str:
+    """Resolve the machine hostname with fallbacks for containers/VMs."""
+    return socket.gethostname() or platform.node() or "unknown"
+
 
 def handle_user_intervention(message: str = "", **kwargs: Any) -> str:
     """Handle a user intervention message from the hub dashboard."""
@@ -157,7 +164,7 @@ async def run_agent(config: AgentConfig) -> None:
                 f"{registry}/api/hub/heartbeat",
                 json={
                     "agent_id": agent_id,
-                    "hostname": socket.gethostname(),
+                    "hostname": _hostname(),
                     "sidecar_peer_id": f"{agent_id}-sidecar",
                     "skill_names": config.skills_builtin,
                 },
@@ -246,7 +253,7 @@ def _register(
             f"{registry}/api/registry/agents",
             json={
                 "agent_id": agent_id,
-                "hostname": socket.gethostname(),
+                "hostname": _hostname(),
                 "sidecar_peer_id": f"{agent_id}-sidecar",
                 "capabilities": {
                     "skills": config.skills_builtin,
