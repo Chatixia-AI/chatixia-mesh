@@ -20,6 +20,6 @@ hmac = "0.12"
 sha1 = "0.10"
 base64 = "0.22"
 dashmap = "6"
-rand = "0.9"
+rand = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
 futures-util = "0.3"
