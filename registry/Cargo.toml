@@ -17,7 +17,7 @@ axum-extra = { version = "0.12", features = ["typed-header"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 hmac = "0.12"
-sha1 = "0.10"
+sha1 = "0.11"
 base64 = "0.22"
 dashmap = "6"
 rand = "0.9"
