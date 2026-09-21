@@ -146,19 +146,22 @@ fn setup_ice_forwarding(
     }));
 
     let rpid = remote_peer_id.to_string();
+    // Weak, so the callback doesn't keep its own connection alive.
+    let pc_weak = Arc::downgrade(pc);
     pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
         info!("[WEBRTC] {} connection state: {}", rpid, state);
-        match state {
+        let ended = matches!(
+            state,
             RTCPeerConnectionState::Failed
-            | RTCPeerConnectionState::Disconnected
-            | RTCPeerConnectionState::Closed => {
-                mesh.remove_peer(&rpid);
-                let _ = to_agent_tx.send(IpcMessage {
-                    msg_type: ipc_types::PEER_DISCONNECTED.into(),
-                    payload: serde_json::json!({ "peer_id": rpid }),
-                });
-            }
-            _ => {}
+                | RTCPeerConnectionState::Disconnected
+                | RTCPeerConnectionState::Closed
+        );
+        // Ignore connections already replaced (e.g. after offer glare).
+        if ended && mesh.remove_peer_if_pc(&rpid, std::sync::Weak::as_ptr(&pc_weak)) {
+            let _ = to_agent_tx.send(IpcMessage {
+                msg_type: ipc_types::PEER_DISCONNECTED.into(),
+                payload: serde_json::json!({ "peer_id": rpid }),
+            });
         }
         Box::pin(async {})
     }));
@@ -235,13 +238,16 @@ fn setup_datachannel_handler(
     }));
 
     let rpid3 = remote_peer_id.to_string();
+    let dc_weak = Arc::downgrade(&dc);
     dc.on_close(Box::new(move || {
         info!("[DC] channel closed with peer {}", rpid3);
-        mesh.remove_peer(&rpid3);
-        let _ = to_agent_for_close.send(IpcMessage {
-            msg_type: ipc_types::PEER_DISCONNECTED.into(),
-            payload: serde_json::json!({ "peer_id": rpid3 }),
-        });
+        // Only tear down the peer if this is still its live channel.
+        if mesh.remove_peer_if_channel(&rpid3, std::sync::Weak::as_ptr(&dc_weak)) {
+            let _ = to_agent_for_close.send(IpcMessage {
+                msg_type: ipc_types::PEER_DISCONNECTED.into(),
+                payload: serde_json::json!({ "peer_id": rpid3 }),
+            });
+        }
         Box::pin(async {})
     }));
 }
@@ -329,8 +335,9 @@ pub async fn handle_offer(
     let offer = RTCSessionDescription::offer(offer_sdp.to_string())?;
     pc.set_remote_description(offer).await?;
 
-    // Store peer connection
+    // Store peer connection, then apply any candidates that raced the offer
     mesh.add_peer(remote_peer_id, pc.clone());
+    mesh.flush_candidates(remote_peer_id).await;
 
     // Create answer
     let answer = pc.create_answer(None).await?;

@@ -499,3 +499,32 @@ See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full devil's 
 - Session note: `chatixia-world/docs/meetings/2026_04_10_S1.md`, "Decisions captured"
 - Archived roadmap: `chatixia-world/docs/archive/ROADMAP_mesh_original.md`
 
+
+---
+
+## ADR-021: Deterministic Offer-Glare Resolution and Early ICE Candidate Buffering
+
+**Date:** 2026-09-22
+**Status:** Accepted
+
+**Context:** The first real two-sidecar test (chatixia-world Phase 2: two world instances, one registry) failed three different ways that no unit test covered:
+
+1. **Offer glare.** The registry adds a peer to its signaling map on WebSocket upgrade, before that peer sends `register`. When two sidecars connect within the same millisecond, each receives a `peer_list` containing the other, and both send an offer. Each side then replaced its offering connection with an answering one, so both answered, neither offered, and the handshake deadlocked (`invalid proposed signaling state transition from stable applying remote answer`).
+2. **Trickle-ICE race.** `handle_offer` runs in a spawned task, while `ice_candidate` messages are handled inline. Candidates that arrived before the answering connection existed (or before the offerer received the answer) were silently dropped. On one machine this lost the host candidate, leaving only a server-reflexive candidate that the router cannot hairpin, and ICE timed out after 30 s.
+3. **rustls provider panic.** `reqwest` 0.13 enables rustls with `aws-lc-rs` while webrtc's DTLS enables it with `ring`. With both compiled in, rustls cannot choose a process-wide provider and panics on the first DTLS handshake, after ICE connects. The lockfile shows the same combination since the reqwest 0.13 bump in March 2026, so the sidecar has most likely been unable to open a DataChannel since then.
+
+**Decision:**
+
+1. **Glare tie-break by peer_id.** When an offer arrives while our connection to that peer is in `have-local-offer`, the peer with the lexicographically lower `peer_id` keeps its offer and ignores the incoming one. The higher peer closes its pending connection and answers. Stale connections cannot tear down their replacement: peer removal on `Closed`/`Failed` and on DataChannel close only happens if the closing connection or channel is still the one on record (`remove_peer_if_pc`, `remove_peer_if_channel`).
+2. **Buffer early candidates.** A remote candidate is applied only when its connection has a remote description. Otherwise it is queued in `MeshManager::pending_candidates` and flushed right after the remote description is set (after `add_peer` in `handle_offer`, after the answer is applied). The queue is cleared when signaling reconnects.
+3. **Install `ring` explicitly** as the rustls process default at the top of `main()`.
+
+The registry-side race (registering on upgrade) is left as is: glare is legal in WebRTC and must be handled by peers anyway.
+
+**Consequences:**
+
+- (+) Measured on one machine: 5 of 5 simultaneous restarts of both sidecars re-formed the DataChannel in 4-5 s (mostly the 3 s respawn delay). Glare and early candidates each occurred and were resolved during that run.
+- (+) First end-to-end LLM dialogue across two sidecars: one-hop DataChannel latency of 1-3 ms on localhost.
+- (-) Pure-unit coverage still cannot exercise these paths; the evidence is the chatixia-world `scripts/mesh-demo.sh` run. A two-machine run across NATs is still outstanding.
+
+**Related:** ADR-002 (full mesh), ADR-016 (P2P task execution), ADR-020 (substrate for chatixia-world).

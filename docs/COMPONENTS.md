@@ -135,7 +135,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
 | `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration |
 | `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding with diagnostic logging (candidate type/address, connection state, gathering state), DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`), `ICE_TRANSPORT_POLICY=relay` support |
-| `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels |
+| `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels; buffers early remote ICE candidates until a remote description is set; identity-checked peer removal so a connection replaced during glare cannot remove its replacement (ADR-021) |
 | `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
 
 ### Key Structs
@@ -389,7 +389,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-020) |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-021) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |

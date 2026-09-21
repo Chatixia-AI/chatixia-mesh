@@ -6,6 +6,7 @@ use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use webrtc::data_channel::RTCDataChannel;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 use webrtc::peer_connection::RTCPeerConnection;
 
 use crate::protocol::MeshMessage;
@@ -27,6 +28,9 @@ pub struct MeshManager {
     peers: DashMap<String, MeshPeer>,
     /// peer_id → DataChannel (shortcut for sending)
     channels: DashMap<String, Arc<RTCDataChannel>>,
+    /// Remote ICE candidates that arrived before their connection had a remote
+    /// description (trickle ICE races the offer/answer). Applied on flush.
+    pending_candidates: DashMap<String, Vec<RTCIceCandidateInit>>,
     /// Outbound sender for the current signaling session (None when disconnected).
     signaling_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<String>>>,
 }
@@ -37,6 +41,7 @@ impl MeshManager {
             local_peer_id,
             peers: DashMap::new(),
             channels: DashMap::new(),
+            pending_candidates: DashMap::new(),
             signaling_tx: std::sync::Mutex::new(None),
         }
     }
@@ -94,6 +99,76 @@ impl MeshManager {
             peer_id,
             self.peers.len()
         );
+    }
+
+    /// Remove a peer only if `pc` is still its current connection.
+    ///
+    /// A connection replaced during offer glare fires its own Closed/Failed
+    /// callback later; this keeps that stale callback from tearing down the
+    /// connection that replaced it. Returns true if the peer was removed.
+    pub fn remove_peer_if_pc(&self, peer_id: &str, pc: *const RTCPeerConnection) -> bool {
+        let is_current = self
+            .peers
+            .get(peer_id)
+            .is_some_and(|p| std::ptr::eq(Arc::as_ptr(&p.pc), pc));
+        if is_current {
+            self.remove_peer(peer_id);
+        }
+        is_current
+    }
+
+    /// Remove a peer only if `dc` is still its registered DataChannel.
+    pub fn remove_peer_if_channel(&self, peer_id: &str, dc: *const RTCDataChannel) -> bool {
+        let is_current = self
+            .channels
+            .get(peer_id)
+            .is_some_and(|c| std::ptr::eq(Arc::as_ptr(&c), dc));
+        if is_current {
+            self.remove_peer(peer_id);
+        }
+        is_current
+    }
+
+    /// Hold a remote ICE candidate until its connection can accept it.
+    pub fn queue_candidate(&self, peer_id: &str, candidate: RTCIceCandidateInit) {
+        self.pending_candidates
+            .entry(peer_id.to_string())
+            .or_default()
+            .push(candidate);
+    }
+
+    /// Take all held candidates for a peer (atomic, so a double flush is harmless).
+    pub fn take_candidates(&self, peer_id: &str) -> Vec<RTCIceCandidateInit> {
+        self.pending_candidates
+            .remove(peer_id)
+            .map(|(_, v)| v)
+            .unwrap_or_default()
+    }
+
+    /// Apply held candidates if the peer's connection now has a remote description.
+    pub async fn flush_candidates(&self, peer_id: &str) {
+        let Some(pc) = self.get_pc(peer_id) else {
+            return;
+        };
+        if pc.remote_description().await.is_none() {
+            return;
+        }
+        let held = self.take_candidates(peer_id);
+        if !held.is_empty() {
+            info!(
+                "[ICE] applying {} early candidate(s) from {}",
+                held.len(),
+                peer_id
+            );
+        }
+        for c in held {
+            if let Err(e) = pc.add_ice_candidate(c).await {
+                warn!(
+                    "[ICE] failed to add early candidate from {}: {}",
+                    peer_id, e
+                );
+            }
+        }
     }
 
     /// Get the peer connection for a peer.
@@ -159,6 +234,7 @@ impl MeshManager {
             }
             self.channels.remove(pid);
         }
+        self.pending_candidates.clear();
         if !peer_ids.is_empty() {
             info!(
                 "[MESH] cleared {} stale peers for reconnect",

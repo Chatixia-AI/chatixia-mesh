@@ -20,7 +20,7 @@ An agent-to-agent mesh network built on WebRTC. Agents discover each other throu
   <a href="docs/ADR.md">ADRs</a>
 </p>
 
-**Status (2026-04-10):** chatixia-mesh is no longer a standalone product. It is the transport layer ("nervous system") for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world): the Rust sidecar and registry carry creature-to-creature traffic across machines. The product roadmap was retired; further mesh work is driven by what chatixia-world Phase 2 (multi-machine) needs. See ADR-020.
+**Status (2026-04-10):** chatixia-mesh is no longer a standalone product. It is the transport layer ("nervous system") for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world): the Rust sidecar and registry carry creature-to-creature traffic across machines. The product roadmap was retired; further mesh work is driven by what chatixia-world Phase 2 (multi-machine) needs. See ADR-020. As of 2026-09-22 two chatixia-world instances hold live LLM dialogue over sidecar DataChannels (see ADR-021 for the handshake fixes that took).
 
 ---
 

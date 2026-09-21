@@ -21,6 +21,11 @@ use tracing::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // webrtc's DTLS pulls in rustls with `ring`, reqwest pulls it in with
+    // `aws-lc-rs`. With both compiled in, rustls panics on the first DTLS
+    // handshake unless a process-wide provider is chosen explicitly.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(

@@ -15,6 +15,9 @@ dotenvy = { workspace = true }
 webrtc = "0.17"
 tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
 reqwest = { version = "0.13", features = ["json"] }
+# Both ring (via webrtc/dtls) and aws-lc-rs (via reqwest) end up enabled, so
+# rustls cannot pick a process-wide provider on its own. main() installs ring.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 hmac = "0.13"
 sha1 = "0.11"
 base64 = "0.22"

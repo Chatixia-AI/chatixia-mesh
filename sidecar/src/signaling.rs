@@ -10,6 +10,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
+use webrtc::peer_connection::signaling_state::RTCSignalingState;
 
 use crate::mesh::MeshManager;
 use crate::protocol::{IpcMessage, SignalingMessage};
@@ -213,6 +214,30 @@ async fn handle_signaling_message(
         "offer" => {
             // Incoming offer — create answer
             let from_peer = msg.peer_id.clone();
+
+            // Offer glare: both sides offered at once (e.g. two sidecars
+            // registering in the same instant both see each other in their
+            // peer_list). Deterministic tie-break so exactly one offer wins:
+            // the lower peer_id keeps its offer, the higher one yields.
+            if let Some(existing) = mesh.get_pc(&from_peer) {
+                if existing.signaling_state() == RTCSignalingState::HaveLocalOffer {
+                    if glare_keep_local_offer(local_peer_id, &from_peer) {
+                        info!(
+                            "[SIG] offer glare with {}: keeping our offer (lower peer_id wins)",
+                            from_peer
+                        );
+                        return;
+                    }
+                    info!(
+                        "[SIG] offer glare with {}: yielding to their offer",
+                        from_peer
+                    );
+                    tokio::spawn(async move {
+                        let _ = existing.close().await;
+                    });
+                }
+            }
+
             if let Some(sdp) = msg.payload.get("sdp").and_then(|s| s.as_str()) {
                 let mesh = mesh.clone();
                 let sig_tx = sig_tx.clone();
@@ -243,6 +268,7 @@ async fn handle_signaling_message(
                         error!("[SIG] failed to set answer from {}: {}", from_peer, e);
                     } else {
                         info!("[SIG] answer set from peer: {}", from_peer);
+                        mesh.flush_candidates(&from_peer).await;
                     }
                 }
             }
@@ -250,7 +276,7 @@ async fn handle_signaling_message(
         "ice_candidate" => {
             // Incoming ICE candidate
             let from_peer = msg.peer_id.clone();
-            if let Some(pc) = mesh.get_pc(&from_peer) {
+            {
                 let candidate = msg
                     .payload
                     .get("candidate")
@@ -273,15 +299,58 @@ async fn handle_signaling_message(
                     candidate,
                     sdp_mid,
                     sdp_mline_index,
-                    username_fragment: Some(String::new()),
+                    username_fragment: None,
                 };
-                if let Err(e) = pc.add_ice_candidate(init).await {
-                    warn!("[ICE] failed to add candidate from {}: {}", from_peer, e);
+                // Trickle ICE races the offer/answer: a candidate can arrive
+                // before its connection exists or has a remote description.
+                // Hold it and apply it once the description is set.
+                match mesh.get_pc(&from_peer) {
+                    Some(pc) if pc.remote_description().await.is_some() => {
+                        if let Err(e) = pc.add_ice_candidate(init).await {
+                            warn!("[ICE] failed to add candidate from {}: {}", from_peer, e);
+                        }
+                    }
+                    _ => {
+                        mesh.queue_candidate(&from_peer, init);
+                        // The description may have landed while we queued.
+                        mesh.flush_candidates(&from_peer).await;
+                    }
                 }
             }
         }
         _ => {
             warn!("[SIG] unhandled message type: {}", msg.msg_type);
+        }
+    }
+}
+
+/// Offer-glare tie-break: when both peers have sent an offer, the peer with
+/// the lexicographically lower id keeps its own offer and ignores the
+/// incoming one; the other peer abandons its offer and answers.
+fn glare_keep_local_offer(local_peer_id: &str, remote_peer_id: &str) -> bool {
+    local_peer_id < remote_peer_id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::glare_keep_local_offer;
+
+    #[test]
+    fn glare_exactly_one_side_keeps_its_offer() {
+        let (a, b) = ("world-the-alpha", "world-the-beta");
+        assert!(glare_keep_local_offer(a, b));
+        assert!(!glare_keep_local_offer(b, a));
+    }
+
+    #[test]
+    fn glare_rule_is_antisymmetric_for_any_distinct_ids() {
+        let ids = ["agent-001", "agent-002", "pi-kitchen", "Z", "a", "world-x"];
+        for x in ids {
+            for y in ids {
+                if x != y {
+                    assert_ne!(glare_keep_local_offer(x, y), glare_keep_local_offer(y, x));
+                }
+            }
         }
     }
 }
