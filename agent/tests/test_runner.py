@@ -85,8 +85,14 @@ class TestEnvVarDerivation:
         import os
 
         # Clear everything first, then set the ones we want to preserve
-        for var in ("REGISTRY_URL", "CHATIXIA_REGISTRY_URL", "CHATIXIA_AGENT_ID",
-                    "API_KEY", "SIGNALING_URL", "TOKEN_URL"):
+        for var in (
+            "REGISTRY_URL",
+            "CHATIXIA_REGISTRY_URL",
+            "CHATIXIA_AGENT_ID",
+            "API_KEY",
+            "SIGNALING_URL",
+            "TOKEN_URL",
+        ):
             monkeypatch.delenv(var, raising=False)
 
         monkeypatch.setenv("SIGNALING_URL", "ws://custom:1234/ws")
@@ -170,7 +176,9 @@ class TestUpdateTask:
         from chatixia.runner import _update_task
 
         mock_post.return_value = MagicMock()
-        _update_task("http://localhost:8080", "ak_test", "task-123", "completed", result="done")
+        _update_task(
+            "http://localhost:8080", "ak_test", "task-123", "completed", result="done"
+        )
 
         call_kwargs = mock_post.call_args
         json_body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
@@ -182,7 +190,9 @@ class TestUpdateTask:
         from chatixia.runner import _update_task
 
         mock_post.return_value = MagicMock()
-        _update_task("http://localhost:8080", "ak_test", "task-456", "failed", error="timeout")
+        _update_task(
+            "http://localhost:8080", "ak_test", "task-456", "failed", error="timeout"
+        )
 
         call_kwargs = mock_post.call_args
         json_body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
@@ -195,7 +205,9 @@ class TestUpdateTask:
 
         mock_post.side_effect = ConnectionError("network down")
         # Should not raise
-        _update_task("http://localhost:8080", "ak_test", "task-789", "failed", error="oops")
+        _update_task(
+            "http://localhost:8080", "ak_test", "task-789", "failed", error="oops"
+        )
 
 
 class TestHostname:
@@ -278,7 +290,14 @@ class TestSkillHandlers:
     def test_all_skills_registered(self):
         from chatixia.runner import SKILL_HANDLERS
 
-        expected = ["list_agents", "find_agent", "delegate", "mesh_send", "mesh_broadcast", "user_intervention"]
+        expected = [
+            "list_agents",
+            "find_agent",
+            "delegate",
+            "mesh_send",
+            "mesh_broadcast",
+            "user_intervention",
+        ]
         for skill in expected:
             assert skill in SKILL_HANDLERS, f"Missing skill: {skill}"
 
@@ -287,3 +306,35 @@ class TestSkillHandlers:
 
         for name, handler in SKILL_HANDLERS.items():
             assert callable(handler), f"Handler for {name} is not callable"
+
+
+class TestLoggingConfig:
+    def test_log_level_env_var(self, monkeypatch):
+        from chatixia.runner import _configure_logging
+
+        monkeypatch.setenv("LOG_LEVEL", "debug")
+        with patch("chatixia.runner.logging.basicConfig") as basic:
+            _configure_logging()
+        basic.assert_called_once()
+        assert basic.call_args.kwargs["level"] == "DEBUG"
+        assert "format" in basic.call_args.kwargs
+
+    def test_log_level_default_info(self, monkeypatch):
+        from chatixia.runner import _configure_logging
+
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        with patch("chatixia.runner.logging.basicConfig") as basic:
+            _configure_logging()
+        assert basic.call_args.kwargs["level"] == "INFO"
+
+
+class TestEnvFlag:
+    @pytest.mark.parametrize(
+        "val,expected",
+        [("1", True), ("true", True), ("YES", True), ("0", False), ("", False)],
+    )
+    def test_env_flag(self, monkeypatch, val, expected):
+        from chatixia.runner import _env_flag
+
+        monkeypatch.setenv("CHATIXIA_SIDECAR_EXTERNAL", val)
+        assert _env_flag("CHATIXIA_SIDECAR_EXTERNAL") is expected

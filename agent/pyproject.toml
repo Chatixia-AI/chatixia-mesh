@@ -1,6 +1,6 @@
 [project]
 name = "chatixia"
-version = "0.4.3"
+version = "0.4.4"
 description = "Deploy and run AI agents on the Chatixia mesh network"
 # readme = "README.md"
 requires-python = ">=3.12"
@@ -18,22 +18,6 @@ classifiers = [
 ]
 
 dependencies = [
-    # LLM
-    "openai>=1.40.0",
-    "tiktoken>=0.7.0",
-
-    # MCP
-    "mcp>=1.26.0",
-
-    # Web & API
-    "fastapi>=0.128.0",
-    "uvicorn>=0.40.0",
-
-    # Data
-    "psycopg[binary]>=3.2.0",
-
-    # Utilities
-    "structlog>=25.5.0",
     "python-dotenv>=1.2.1",
     "requests>=2.32.0",
     "pyyaml>=6.0",

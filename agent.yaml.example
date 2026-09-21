@@ -26,13 +26,12 @@ sidecar:
 # Skills to load
 skills:
   builtin:
-    - calculator
-    - delegate
     - list_agents
+    - find_agent
+    - delegate
     - mesh_send
     - mesh_broadcast
-    - shell
-    - search_knowledge
+    - user_intervention
   dirs: []  # additional skill directories
 
 # Autonomous goals

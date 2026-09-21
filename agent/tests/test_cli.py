@@ -70,7 +70,9 @@ class TestCliMain:
         content = (tmp_path / "my-new-agent" / "agent.yaml").read_text()
         assert "name: my-new-agent" in content
 
-    def test_init_creates_subdirectory_with_env_and_gitignore(self, tmp_path, monkeypatch):
+    def test_init_creates_subdirectory_with_env_and_gitignore(
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.chdir(tmp_path)
         main(["init", "sub-agent"])
         sub = tmp_path / "sub-agent"

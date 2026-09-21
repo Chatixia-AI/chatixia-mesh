@@ -53,12 +53,13 @@ def deregister():
 async def main():
     register_with_registry()
 
-    # Clean deregister on Ctrl+C
+    client = MeshClient()
+
+    # Clean deregister on Ctrl+C (registered after `client` exists)
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown(client)))
 
-    client = MeshClient()
     await client.start()
     print("Agent connected to mesh")
 

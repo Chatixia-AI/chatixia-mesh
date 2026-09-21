@@ -197,5 +197,7 @@ class TestSystemPrompt:
         assert cfg.system_prompt == ""
 
     def test_whitespace_handling(self):
-        cfg = AgentConfig(name="test", prompt="  \n  Hello  \n  ", agent_md="  \n  World  \n  ")
+        cfg = AgentConfig(
+            name="test", prompt="  \n  Hello  \n  ", agent_md="  \n  World  \n  "
+        )
         assert cfg.system_prompt == "Hello\n\nWorld"

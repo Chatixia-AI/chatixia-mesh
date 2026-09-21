@@ -49,6 +49,19 @@ SKILL_HANDLERS: dict[str, Callable[..., str | Awaitable[str]]] = {
 }
 
 
+def _env_flag(name: str) -> bool:
+    """Return True if env var *name* is set to a truthy value (1/true/yes)."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def _configure_logging() -> None:
+    """Configure root logging once from ``LOG_LEVEL`` (default INFO)."""
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
 async def run_agent(config: AgentConfig) -> None:
     """Run an agent: register with registry, connect to mesh, heartbeat."""
     # Load .env if present
@@ -57,6 +70,8 @@ async def run_agent(config: AgentConfig) -> None:
         from dotenv import load_dotenv
 
         load_dotenv(env_path)
+
+    _configure_logging()
 
     registry = config.registry.rstrip("/")
     api_key = config.sidecar.api_key or os.environ.get("API_KEY", "ak_dev_001")
@@ -83,6 +98,7 @@ async def run_agent(config: AgentConfig) -> None:
     client = MeshClient(
         socket_path=config.sidecar.socket,
         sidecar_binary=config.sidecar.binary,
+        external_sidecar=_env_flag("CHATIXIA_SIDECAR_EXTERNAL"),
     )
 
     # Clean shutdown on signals
@@ -274,14 +290,14 @@ def _register(
             f"  PORT=9090 chatixia-registry # custom port"
         ) from None
     except requests.Timeout:
+        host_part = registry.rsplit("/", 1)[-1]
+        port = registry.rsplit(":", 1)[-1] if ":" in host_part else "8080"
         raise RuntimeError(
             f"Registry at {registry} is not responding (timed out after 10s).\n"
             "This usually means something else is using that port.\n"
-            "Check with: lsof -i :{port}\n"
+            f"Check with: lsof -i :{port}\n"
             "Or try a different port:\n"
-            f"  PORT=9090 chatixia-registry".format(
-                port=registry.rsplit(":", 1)[-1] if ":" in registry.rsplit("/", 1)[-1] else "8080"
-            )
+            "  PORT=9090 chatixia-registry"
         ) from None
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "?"

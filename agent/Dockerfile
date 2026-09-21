@@ -1,9 +1,5 @@
 FROM python:3.12-slim-bookworm
 
-# System deps for psycopg binary
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Install uv

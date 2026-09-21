@@ -100,8 +100,12 @@ class MeshClient:
         self,
         socket_path: str = "/tmp/chatixia-sidecar.sock",
         sidecar_binary: str | None = None,
+        external_sidecar: bool = False,
     ) -> None:
         self._socket_path = socket_path
+        # When True, connect to a sidecar managed elsewhere (e.g. a separate
+        # container): never unlink the socket and never spawn a process.
+        self._external_sidecar = external_sidecar
         self._sidecar_binary = sidecar_binary or os.environ.get(
             "SIDECAR_BINARY", "chatixia-sidecar"
         )
@@ -118,10 +122,12 @@ class MeshClient:
 
     async def start(self, auto_spawn_sidecar: bool = True) -> None:
         """Start the mesh client — optionally spawn the sidecar process."""
-        # Remove stale socket from previous crash
-        Path(self._socket_path).unlink(missing_ok=True)
+        if self._external_sidecar:
+            auto_spawn_sidecar = False
 
         if auto_spawn_sidecar:
+            # Remove stale socket from previous crash
+            Path(self._socket_path).unlink(missing_ok=True)
             await self._spawn_sidecar()
 
         # Wait for socket to appear
@@ -137,9 +143,13 @@ class MeshClient:
             await asyncio.sleep(0.1)
 
         if not Path(self._socket_path).exists():
+            hint = (
+                " — is the external sidecar running?"
+                if self._external_sidecar
+                else f" — check {self._sidecar_log_path}"
+            )
             raise RuntimeError(
-                f"Sidecar did not create socket at {self._socket_path} within 5s"
-                f" — check {self._sidecar_log_path}"
+                f"Sidecar did not create socket at {self._socket_path} within 5s{hint}"
             )
 
         # Connect to sidecar IPC socket

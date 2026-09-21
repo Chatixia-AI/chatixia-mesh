@@ -110,7 +110,10 @@ async fn main() -> anyhow::Result<()> {
         // ICE config (STUN/TURN)
         .route("/api/config", get(auth::ice_config))
         // Static files (hub dashboard + web client)
-        .fallback_service(ServeDir::new("hub/dist").append_index_html_on_directories(true))
+        .fallback_service(
+            ServeDir::new(std::env::var("HUB_DIST_DIR").unwrap_or_else(|_| "hub/dist".to_string()))
+                .append_index_html_on_directories(true),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state);
 

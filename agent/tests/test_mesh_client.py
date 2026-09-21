@@ -1,4 +1,3 @@
-import os
 import stat
 
 import pytest
@@ -203,3 +202,75 @@ class TestResolveSidecarBinary:
         monkeypatch.setenv("PATH", str(tmp_path))
         with pytest.raises(RuntimeError, match="cargo install"):
             _resolve_sidecar_binary("nonexistent-binary")
+
+
+class TestExternalSidecarMode:
+    """CHATIXIA_SIDECAR_EXTERNAL / external_sidecar=True: no unlink, no spawn."""
+
+    def test_external_mode_connects_without_unlink_or_spawn(self, tmp_path):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        # The client only checks Path.exists() before connecting, so a plain
+        # file stands in for the sidecar's socket.
+        sock = tmp_path / "sidecar.sock"
+        sock.write_text("")
+
+        reader = AsyncMock()
+        reader.readline = AsyncMock(return_value=b"")  # EOF ends listen loop
+        writer = MagicMock()
+
+        async def scenario():
+            client = MeshClient(socket_path=str(sock), external_sidecar=True)
+            with (
+                patch.object(
+                    MeshClient, "_spawn_sidecar", new_callable=AsyncMock
+                ) as spawn,
+                patch(
+                    "chatixia.core.mesh_client.asyncio.open_unix_connection",
+                    new=AsyncMock(return_value=(reader, writer)),
+                ) as conn,
+                patch("chatixia.core.mesh_client.Path.unlink") as unlink,
+            ):
+                await client.start()
+                unlink.assert_not_called()
+                spawn.assert_not_called()
+                conn.assert_awaited_once_with(str(sock))
+            assert client.connected is True
+            assert client._sidecar_proc is None
+            assert sock.exists()
+            await client.stop()
+
+        asyncio.run(scenario())
+
+    def test_external_mode_missing_socket_hint(self, monkeypatch):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        monkeypatch.setattr("chatixia.core.mesh_client.asyncio.sleep", AsyncMock())
+        client = MeshClient(
+            socket_path="/tmp/cx-nonexistent.sock", external_sidecar=True
+        )
+        with patch.object(
+            MeshClient, "_spawn_sidecar", new_callable=AsyncMock
+        ) as spawn:
+            with pytest.raises(RuntimeError, match="external sidecar"):
+                asyncio.run(client.start())
+            spawn.assert_not_called()
+
+    def test_default_mode_unlinks_stale_socket(self, tmp_path):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        stale = tmp_path / "stale.sock"
+        stale.write_text("")
+        client = MeshClient(socket_path=str(stale))
+        with patch.object(
+            MeshClient,
+            "_spawn_sidecar",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("halt"),
+        ):
+            with pytest.raises(RuntimeError, match="halt"):
+                asyncio.run(client.start())
+        assert not stale.exists()

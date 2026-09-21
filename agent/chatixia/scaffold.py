@@ -34,10 +34,12 @@ sidecar:
 # Skills configuration
 skills:
   builtin:
-    - delegate
     - list_agents
+    - find_agent
+    - delegate
     - mesh_send
     - mesh_broadcast
+    - user_intervention
   # dirs:                  # Additional skill directories
   #   - ./skills
   # disabled:              # Skills to exclude

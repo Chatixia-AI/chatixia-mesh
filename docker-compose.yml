@@ -22,7 +22,6 @@ services:
       API_KEYS_FILE: /etc/chatixia/api_keys.json
       TURN_URL: ${TURN_URL:-}
       TURN_SECRET: ${TURN_SECRET:-}
-      REGISTRY_PUBLIC_URL: ${REGISTRY_PUBLIC_URL:-http://localhost:8080}
       HUB_DIST_DIR: /srv/hub
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
@@ -63,7 +62,8 @@ services:
       TOKEN_URL: http://registry:8080/api/token
       API_KEY: ${API_KEY:-ak_dev_001}
       IPC_SOCKET: /run/chatixia/sidecar.sock
-      SIDECAR_BINARY: chatixia-sidecar
+      # The sidecar runs as its own service (above); do not spawn one in-process.
+      CHATIXIA_SIDECAR_EXTERNAL: "1"
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434/v1}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
@@ -73,7 +73,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ipc-socket:/run/chatixia
-      - ./agent.yaml:/app/agent.yaml:ro
+      # Copy agent.yaml.example to agent.yaml and edit it, then set
+      # AGENT_MANIFEST=./agent.yaml (falls back to the example manifest).
+      - ${AGENT_MANIFEST:-./agent.yaml.example}:/app/agent.yaml:ro
     depends_on:
       registry:
         condition: service_healthy

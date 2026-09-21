@@ -98,8 +98,12 @@ export async function revokeAgent(id: string): Promise<void> {
   await fetch(`${BASE}/api/pairing/${id}/revoke`, { method: 'POST' });
 }
 
-export async function generateInviteCode(): Promise<{ code: string; expires_in: number }> {
-  const res = await fetch(`${BASE}/api/pairing/generate-code`, { method: 'POST' });
+export async function generateInviteCode(
+  apiKey?: string,
+): Promise<{ code: string; expires_in: number }> {
+  const headers: Record<string, string> = {};
+  if (apiKey) headers['x-api-key'] = apiKey;
+  const res = await fetch(`${BASE}/api/pairing/generate-code`, { method: 'POST', headers });
   return res.json();
 }
 
