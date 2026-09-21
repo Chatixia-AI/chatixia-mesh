@@ -51,7 +51,7 @@ Messages exchanged directly between agents over WebRTC DataChannels (DTLS encryp
 | `task_request` | A → B | `{ "skill": "...", "args": {...}, "timeout_ms": 30000 }` |
 | `task_response` | B → A | `{ "result": "..." }` or `{ "error": "..." }` |
 | `task_stream_chunk` | B → A | `{ "text": "...", "done": false }` |
-| `skill_query` | A → B | `{ "skill": "calculator" }` |
+| `skill_query` | A → B | `{ "skill": "list_agents" }` |
 | `skill_response` | B → A | `{ "available": true, "description": "..." }` |
 | `agent_status` | A → all | `{ "status": "thinking|acting|idle" }` |
 | `agent_prompt` | user → agent | `{ "text": "...", "session_id": "..." }` |
@@ -68,7 +68,7 @@ JSON-line protocol between Python agent and Rust sidecar. One JSON object per li
 {"type": "send", "payload": {"target_peer": "peer-abc", "message": {...}}}
 {"type": "broadcast", "payload": {"message": {...}}}
 {"type": "list_peers", "payload": {}}
-{"type": "connect", "payload": {"target_peer_id": "peer-abc"}}
+{"type": "connect", "payload": {"peer_id": "peer-abc"}}
 ```
 
 ### Sidecar → Agent (Events)
