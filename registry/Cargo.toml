@@ -13,13 +13,11 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 dotenvy = { workspace = true }
 axum = { version = "0.8", features = ["ws"] }
-axum-extra = { version = "0.12", features = ["typed-header"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
-hmac = "0.12"
-sha1 = "0.10"
+hmac = "0.13"
+sha1 = "0.11"
 base64 = "0.22"
 dashmap = "6"
-rand = "0.9"
+rand = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
-futures-util = "0.3"

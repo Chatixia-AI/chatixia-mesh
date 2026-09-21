@@ -27,8 +27,6 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
 
-// futures-util used by sidecar, not directly by registry but kept for potential future use
-
 use auth::AuthState;
 use hub::HubState;
 use pairing::PairingState;
