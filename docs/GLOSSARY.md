@@ -39,3 +39,6 @@
 | **Control Plane** | The part of the system that handles discovery, routing, authentication, and coordination. In chatixia-mesh: the registry (HTTP + WebSocket signaling). |
 | **Data Plane**    | The part of the system that carries application data between agents. In chatixia-mesh: WebRTC DataChannels (P2P). Separated from the control plane by design. |
 | **Graceful Degradation** | The system's three-tier fallback strategy: P2P DataChannel (fastest) → TURN relay (slower, still encrypted) → HTTP task queue via registry (slowest, always works). |
+| **chatixia-world** | The product: a creature world (sibling repo `chatixia-world`) whose creatures ("chatixias") run on one or many machines. chatixia-mesh is its transport layer. See ADR-020. |
+| **Substrate / Nervous System** | The role chatixia-mesh plays for chatixia-world since 2026-04-10: the Rust sidecar + registry that carry creature-to-creature traffic across machines. Infrastructure, not a product; its backlog is driven by chatixia-world's needs. |
+

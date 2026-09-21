@@ -468,3 +468,34 @@ See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full devil's 
 - Landing page: `chatixia-docs` (chatixia.net)
 - Blog: `chatixia-blogs` (blog.chatixia.net)
 - Core project: `chatixia-mesh`
+
+---
+
+## ADR-020: chatixia-mesh Becomes the Transport Substrate for chatixia-world
+
+**Date:** 2026-04-10
+**Status:** Accepted
+
+**Context:** A product/market-fit critique of chatixia-mesh concluded it was pre-PMF with sharp but untested positioning. A follow-up "Envoy for agents" repositioning thesis (the Rust sidecar as the durable asset) was drafted and then falsified by two checks: MCP Streamable HTTP has been the blessed remote transport since March 2025, so the MCP-hosting wedge is occupied by the spec itself, and Dapr Agents reached v1.0 GA at KubeCon Europe 2026, so the sidecar-for-agents niche is not empty. Continuing to run chatixia-mesh as a standalone product with a roadmap, GTM metrics, and competitive analysis was no longer justified. At the same time the WebRTC sidecar, registry, and signaling stack work and are exactly what a multi-machine creature world needs.
+
+**Decision:** Retire the chatixia-mesh product roadmap. chatixia-mesh is the transport substrate (the "nervous system") for `chatixia-world`, which is the product. Specifically:
+
+1. **No PMF or GTM metrics for the mesh.** Nothing is measured in users, downloads, or PMF. The only success signal lives in chatixia-world.
+2. **Mesh scope is Rust infrastructure.** Sidecar, registry, protocol, threat model, and the architecture-reference docs (SYSTEM_DESIGN, ADR, THREAT_MODEL, WEBRTC_VS_ALTERNATIVES, DEPLOYMENT_GUIDE, COMPONENTS). The name `chatixia-mesh` is kept; the README framing does the repositioning.
+3. **chatixia-world drives the mesh backlog.** New mesh work is pulled by chatixia-world Phase 2 (multi-machine), not pushed by a mesh roadmap.
+
+**Consequences:**
+
+- `docs/ROADMAP.md` is deleted here and archived as `chatixia-world/docs/archive/ROADMAP_mesh_original.md`.
+- The former Phase 1 "production-ready" items (Postgres persistence, OpenTelemetry, rate limiting, A2A Agent Cards / `/.well-known/agent.json`) are dropped unless chatixia-world Phase 2 needs them. The A2A route entries and `REGISTRY_PUBLIC_URL` were never implemented and are removed from the docs.
+- The README gains a Status paragraph pointing at chatixia-world; the roadmap link and table row are removed.
+- The open security gaps recorded in THREAT_MODEL.md (unauthenticated pairing admin endpoints, ungated SDP/ICE relay, unbounded in-memory growth) stay open until a chatixia-world phase requires them fixed.
+- (+) One product, one place to decide what matters; no roadmap left to rot.
+- (-) The mesh has no independent reason to add features; anything not needed by chatixia-world waits.
+
+**Related:**
+
+- Product: `chatixia-world` (`docs/PLAN.md` section 3.2, "Repo 1 — chatixia-mesh (the nervous system)")
+- Session note: `chatixia-world/docs/meetings/2026_04_10_S1.md`, "Decisions captured"
+- Archived roadmap: `chatixia-world/docs/archive/ROADMAP_mesh_original.md`
+

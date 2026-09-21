@@ -17,9 +17,10 @@ An agent-to-agent mesh network built on WebRTC. Agents discover each other throu
   <a href="https://chatixia-ai.github.io/chatixia-mesh">Documentation</a> ·
   <a href="docs/SYSTEM_DESIGN.md">Architecture</a> ·
   <a href="docs/COMPONENTS.md">Components</a> ·
-  <a href="docs/ADR.md">ADRs</a> ·
-  <a href="docs/ROADMAP.md">Roadmap</a>
+  <a href="docs/ADR.md">ADRs</a>
 </p>
+
+**Status (2026-04-10):** chatixia-mesh is no longer a standalone product. It is the transport layer ("nervous system") for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world): the Rust sidecar and registry carry creature-to-creature traffic across machines. The product roadmap was retired; further mesh work is driven by what chatixia-world Phase 2 (multi-machine) needs. See ADR-020.
 
 ---
 
@@ -30,7 +31,7 @@ An agent-to-agent mesh network built on WebRTC. Agents discover each other throu
 | **Data path** | P2P — DTLS-encrypted DataChannels between agents | All traffic routed through a central server |
 | **Agent runtime** | Sidecar pattern — WebRTC in Rust, agents write Python | Agents coupled to framework internals |
 | **Deployment** | Self-hosted first — no external dependencies, on-prem ready | Cloud-dependent or SaaS |
-| **Interop** | Open standards — Google A2A protocol, Anthropic MCP | Proprietary protocols |
+| **Interop** | Open standards — WebRTC (ICE/DTLS/SCTP), JSON messages over DataChannels | Proprietary protocols |
 
 CrewAI, AutoGen, and LangGraph route all agent traffic through a central server. chatixia-mesh doesn't.
 
@@ -39,7 +40,7 @@ CrewAI, AutoGen, and LangGraph route all agent traffic through a central server.
 ```text
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │  Agent (Py)  │     │  Agent (Py)  │     │  Agent (Py)  │
-│  29+ skills  │     │  MCP tools   │     │  Auto goals  │
+│ mesh skills  │     │ mesh skills  │     │ mesh skills  │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │ IPC                │ IPC                │ IPC
 ┌──────▼───────┐     ┌──────▼───────┐     ┌──────▼───────┐
@@ -66,7 +67,7 @@ CrewAI, AutoGen, and LangGraph route all agent traffic through a central server.
 | --- | --- |
 | **[Registry](registry/src/main.rs)** | Rust/axum signaling server, agent registry, task queue, and hub API |
 | **[Sidecar](sidecar/src/main.rs)** | Rust/webrtc-rs mesh peer — WebRTC DataChannels + Unix socket IPC |
-| **[Agent Framework](agent/chatixia/)** | Python package (`chatixia`) — CLI, skills, mesh client, LLM integration |
+| **[Agent Framework](agent/chatixia/)** | Python package (`chatixia`) — CLI, six built-in mesh skills, mesh client (no LLM loop yet) |
 | **[Hub Dashboard](hub/src/App.tsx)** | React/Vite admin UI — agent health, approvals, task dispatch |
 
 ## Quick start
@@ -175,7 +176,7 @@ Default behavior: unapproved agents cannot connect. This can be relaxed per-depl
 
 | Command | Description |
 | --- | --- |
-| `chatixia init [name] [--role ...]` | Scaffold a new agent with optional role template |
+| `chatixia init [name] [-d dir]` | Scaffold a new agent (`agent.yaml`, `AGENT.md`, `.env.example`, `.gitignore`) |
 | `chatixia run [manifest]` | Register, connect to mesh, heartbeat |
 | `chatixia validate [manifest]` | Validate manifest and print summary |
 | `chatixia pair <code> [manifest]` | Redeem invite code to join the mesh |
@@ -229,9 +230,8 @@ chatixia-mesh/
 ├── registry/           # Signaling + registry + hub API (Rust/axum)
 ├── sidecar/            # WebRTC mesh peer + IPC bridge (Rust/webrtc-rs)
 ├── agent/              # Python agent framework + CLI (chatixia PyPI package)
-│   ├── chatixia/       # CLI: init, run, validate, pair
-│   ├── core/           # Mesh client, skill handlers
-│   └── skills/         # Built-in mesh skill definitions
+│   └── chatixia/       # CLI (init, run, validate, pair), runner with SKILL_HANDLERS
+│       └── core/       # Mesh client, skill handlers
 ├── hub/                # Monitoring dashboard (React/Vite)
 ├── site/               # GitHub Pages documentation site
 ├── infra/              # nginx, coturn configs
@@ -245,7 +245,7 @@ chatixia-mesh/
 | [COMPONENTS.md](docs/COMPONENTS.md) | Detailed reference of every module, struct, route, and env var |
 | [SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Architecture, protocols, auth flows |
 | [ADR.md](docs/ADR.md) | Architecture decision records |
-| [ROADMAP.md](docs/ROADMAP.md) | Product roadmap and competitive analysis |
+| Roadmap | Retired 2026-04-10. chatixia-mesh is now the transport layer for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world); the old roadmap is archived there as `docs/archive/ROADMAP_mesh_original.md`. |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | Security analysis and mitigations |
 | [GLOSSARY.md](docs/GLOSSARY.md) | Domain terminology |
 

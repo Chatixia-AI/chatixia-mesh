@@ -11,7 +11,7 @@ chatixia-mesh/
 ├── sidecar/            # Rust (webrtc-rs): WebRTC mesh peer + IPC bridge
 │   └── Dockerfile      # Multi-stage: Rust → debian-slim
 ├── agent/              # Python: AI agent framework
-│   └── Dockerfile      # python:3.13-slim + pip install
+│   └── Dockerfile      # python:3.12-slim-bookworm + pip install
 ├── hub/                # React (Vite): monitoring dashboard
 ├── infra/              # Nginx + coturn configs
 ├── site/               # GitHub Pages documentation site
@@ -76,7 +76,6 @@ GET  /ws?token=...                   # WebSocket upgrade (main.rs → signaling)
 GET  /api/registry/agents            # List all agents (registry.rs)
 POST /api/registry/agents            # Register/update agent (registry.rs)
 GET    /api/registry/agents/{agent_id}      # Get specific agent (registry.rs)
-GET    /api/registry/agents/{agent_id}/card # A2A Agent Card for agent (registry.rs)
 DELETE /api/registry/agents/{agent_id}      # Unregister agent (registry.rs)
 GET    /api/registry/route?skill=...        # Find agent by skill (registry.rs)
 POST /api/hub/tasks                  # Submit task (hub.rs)
@@ -93,8 +92,14 @@ POST /api/pairing/{id}/approve        # Approve pending agent (pairing.rs)
 POST /api/pairing/{id}/reject         # Reject pending agent (pairing.rs)
 POST /api/pairing/{id}/revoke         # Revoke approved agent (pairing.rs)
 GET  /api/config                      # ICE server config — STUN + optional TURN (auth.rs)
-GET  /.well-known/agent.json          # A2A discovery — list all active agents (registry.rs)
 ```
+
+### Auth and Pairing Constants
+
+- JWT lifetime is 300 s (`auth.rs:89`, `exp = now + 300`).
+- `POST /api/token` accepts either an API key or a device token via the `x-device-token` header; a valid device token issues a JWT for the paired `peer_id` with role `agent` (`auth.rs:150-171`).
+- Invite codes expire after 300 s; `/api/pairing/pair` is rate-limited to 5 attempts per IP per 60 s (`pairing.rs:64-66`).
+- On `/ws`, every inbound signaling message's `peer_id` must equal the JWT `sub`; mismatches are logged and dropped (`main.rs:185-188`).
 
 ### Background Tasks
 
@@ -113,8 +118,7 @@ GET  /.well-known/agent.json          # A2A discovery — list all active agents
 | `API_KEYS_FILE` | `api_keys.json` | Path to API key definitions |
 | `TURN_URL` | _(none)_ | Optional TURN server URL |
 | `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials |
-| `REGISTRY_PUBLIC_URL` | `http://localhost:8080` | Public URL for Agent Card `url` fields |
-| `HUB_DIST_DIR` | `hub/dist` | Directory for hub static assets (set to `/srv/hub` in Docker) |
+| `HUB_DIST_DIR` | `hub/dist` | Directory served as hub static assets by the fallback route (set to `/srv/hub` in Docker) |
 | `RUST_LOG` | `info` | Tracing filter |
 
 ---
@@ -150,8 +154,8 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 `ping`, `pong`, `task_request`, `task_response`, `task_stream_chunk`, `skill_query`, `skill_response`, `agent_status`, `agent_prompt`, `agent_response`, `agent_stream_chunk`
 
 **IPC** (`protocol::ipc_types`):
-- Agent → Sidecar: `send`, `broadcast`, `connect`, `list_peers`
-- Sidecar → Agent: `message`, `peer_connected`, `peer_disconnected`, `peer_list`
+- Agent → Sidecar: `send` (message to a specific peer), `broadcast` (to all peers), `connect` (payload `{"peer_id": ...}`, `target_peer_id` also accepted; initiate a connection to a peer), `list_peers` (request connected peers)
+- Sidecar → Agent: `message` (received from a peer), `peer_connected`, `peer_disconnected`, `peer_list` (response to `list_peers`)
 
 ### Environment Variables
 
@@ -160,10 +164,12 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `SIGNALING_URL` | `ws://localhost:8080/ws` | Registry WebSocket URL |
 | `API_KEY` | `ak_dev_001` | API key for JWT exchange |
 | `TOKEN_URL` | `http://localhost:8080/api/token` | Registry token endpoint |
-| `IPC_SOCKET` | `/tmp/chatixia-sidecar.sock` | Unix socket path for agent IPC. Log file written to same path with `.log` extension |
+| `IPC_SOCKET` | `/tmp/chatixia-sidecar.sock` | Unix socket path for agent IPC. When the Python agent spawns the sidecar it redirects the sidecar's stdout/stderr to the same path with a `.log` extension (`agent/chatixia/core/mesh_client.py:167-168`); the sidecar itself writes no log file |
 | `TURN_URL` | _(none)_ | Optional TURN server URL (e.g. `turn:host:3478`) |
-| `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials |
-| `ICE_TRANSPORT_POLICY` | `all` | Set to `relay` to force all traffic through TURN (for testing) |
+| `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials (`webrtc_peer.rs:40`) |
+| `TURN_USERNAME` | _(empty)_ | Static TURN username, used only when `TURN_SECRET` is absent (`webrtc_peer.rs:44`) |
+| `TURN_PASSWORD` | _(empty)_ | Static TURN password, used only when `TURN_SECRET` is absent (`webrtc_peer.rs:45`) |
+| `ICE_TRANSPORT_POLICY` | `all` | Set to `relay` to force all traffic through TURN (`webrtc_peer.rs:90`) |
 | `RUST_LOG` | `info` | Tracing filter |
 
 ---
@@ -225,23 +231,7 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 | `find_agent` | `handle_find_agent()` | Find best agent for a skill via registry route endpoint (sync, control plane) |
 | `user_intervention` | `handle_user_intervention()` | Sync — acknowledge free-form messages from the hub dashboard (submitted via intervene panel) |
 
-### Skill Definition Format (`chatixia/skills/*/skill.json`)
-
-```json
-{
-  "name": "skill_name",
-  "description": "...",
-  "version": "1.0.0",
-  "category": "Mesh",
-  "parameters": {
-    "param_name": {
-      "type": "string",
-      "description": "...",
-      "required": true
-    }
-  }
-}
-```
+Skills are not loaded from disk. The full set is the static `SKILL_HANDLERS` dict in `agent/chatixia/runner.py` (six entries: `list_agents`, `find_agent`, `delegate`, `mesh_send`, `mesh_broadcast`, `user_intervention`). The heartbeat advertises its keys and both the P2P task handler and the registry task loop look handlers up in it. There is no `skill.json` loader.
 
 ### Environment Variables
 
@@ -255,14 +245,10 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 | `SIDECAR_BINARY` | `chatixia-sidecar` | Path to sidecar binary |
 | `CHATIXIA_REGISTRY_URL` | `http://localhost:8080` | Registry URL (used by `mesh_skills.py`) |
 | `CHATIXIA_AGENT_ID` | `my-agent` | Agent identifier (used by `mesh_skills.py`) |
-| `LLM_PROVIDER` | `azure` | LLM backend: `azure`, `ollama`, `openai` |
-| `AZURE_OPENAI_ENDPOINT` | — | Azure OpenAI endpoint |
-| `AZURE_OPENAI_API_KEY` | — | Azure OpenAI API key |
-| `AZURE_OPENAI_DEPLOYMENT` | — | Azure OpenAI deployment name |
-| `AZURE_OPENAI_API_VERSION` | — | Azure OpenAI API version |
-| `OLLAMA_URL` | `http://localhost:11434/v1` | Ollama endpoint |
-| `AGENT_MODEL` | — | Model name for Ollama |
+| `CHATIXIA_SIDECAR_EXTERNAL` | _(unset)_ | Set to `1` to connect to an already-running sidecar at the configured socket instead of spawning one |
 | `LOG_LEVEL` | `WARNING` | Python log level |
+
+Reserved for the future LLM loop (listed in `.env.example` and the scaffolded `.env.example`, but not read by any Python code yet): `LLM_PROVIDER`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`, `OPENAI_API_KEY`, `OLLAMA_URL`, `AGENT_MODEL`.
 
 ---
 
@@ -274,7 +260,7 @@ React + Vite + TypeScript — real-time monitoring dashboard.
 
 Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full specification.
 
-- **Typography:** Space Grotesk (headlines/labels), Manrope (body/utility) — loaded via Google Fonts in `index.html`
+- **Typography:** Space Grotesk (headlines/labels), Manrope (body/utility), JetBrains Mono (code/IDs) — loaded via Google Fonts in `index.html`
 - **Surfaces:** Tonal layering with frosted glass (`backdrop-filter: blur(24–32px)`) instead of borders or shadows
 - **Color:** Light canvas (`#f5f7f9`), Electric Cyan primary gradient (`#00647b` → `#00cffc` at 135°)
 - **Boundaries:** "No-Line Rule" — background color shifts and ghost borders (`outline-variant` at 15% opacity), no `1px solid` borders
@@ -294,6 +280,8 @@ Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full s
 | `src/components/TaskQueue.tsx` | Task list with spacing-based row separation (no divider lines), hover background shift, pill state badges |
 | `src/components/NetworkTopology.tsx` | Canvas mesh visualization (gradient hub node, white circles with health dots, glassmorphic legend overlay) |
 | `src/components/AgentChat.tsx` | Intervention interface — glassmorphic container, gradient primary CTA, focus-state input indicator |
+| `src/components/ApprovalQueue.tsx` | Pending-agent approval list — approve/reject buttons per `OnboardingEntry`, uses `approveAgent`/`rejectAgent` from `api.ts` |
+| `vite.config.ts` | Dev server on port 5174; proxies `/api` to `http://localhost:8080` and `/ws` (WebSocket) to `ws://localhost:8080` |
 
 ### Design Tokens (`theme.ts`)
 
@@ -301,7 +289,7 @@ Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full s
 |--------|----------|
 | `color` | Surface hierarchy, primary/accent, semantic health colors, text colors |
 | `gradient` | `primary` (signature 135° gradient), `primarySubtle` (low-opacity variant) |
-| `font` | `display` (Space Grotesk), `body` (Manrope) |
+| `font` | `display` (Space Grotesk), `body` (Manrope), `mono` (JetBrains Mono) |
 | `radius` | `sm` (0.75rem), `md` (1.5rem), `lg` (2rem), `xl` (3rem) |
 | `spacing` | Scale from `1` (0.25rem) to `12` (4rem) |
 | `shadow` | `ambient`, `float`, `primaryGlow` |
@@ -315,6 +303,7 @@ Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full s
 | `Task` | `id`, `skill`, `source_agent_id`, `target_agent_id`, `assigned_agent_id`, `state`, `result`, `error`, `created_at`, `updated_at`, `ttl` |
 | `TopologyNode` | `agent_id`, `ip`, `port`, `hostname`, `sidecar_peer_id`, `mode`, `skills_count`, `health`, `mesh_peers` |
 | `Topology` | `nodes`, `mesh_edges` |
+| `OnboardingEntry` | `id`, `agent_name`, `peer_id`, `device_token?`, `status` (`pending_approval` / `approved` / `rejected` / `revoked`), `created_at`, `updated_at` |
 
 ### API Endpoints Consumed
 
@@ -323,7 +312,14 @@ GET  /api/registry/agents
 GET  /api/hub/tasks/all
 GET  /api/hub/network/topology
 POST /api/hub/tasks
+GET  /api/pairing/pending
+POST /api/pairing/{id}/approve
+POST /api/pairing/{id}/reject
+POST /api/pairing/{id}/revoke
+POST /api/pairing/generate-code
 ```
+
+In development (`npm run dev`) the hub runs on port 5174 and the Vite proxy forwards `/api` and `/ws` to the registry on 8080. In production the registry serves the built `hub/dist` directly.
 
 ### Styling
 
@@ -346,7 +342,7 @@ Atmospheric Luminescence design system — light-mode glassmorphic. Inline CSS w
 |------|---------|
 | `.env.example` | All environment variables with defaults |
 | `agent/.env` | Agent runner env vars — loaded by `python-dotenv` (gitignored) |
-| `agent.yaml.example` | Agent configuration: name, registry URL, LLM provider, sidecar config, skills, goals |
+| `agent.yaml.example` | Agent configuration: name, registry URL, LLM provider, sidecar config, skills (the example's `goals` key is not parsed by `config.py`) |
 | `api_keys.json` | API key → peer_id/role mappings (not committed — in `.gitignore`) |
 | `Cargo.toml` | Rust workspace: members `registry`, `sidecar` |
 | `hub/package.json` | Hub dependencies: React 19, Vite 6, TypeScript 5.7 |
@@ -369,7 +365,7 @@ docker compose --profile turn up   # include coturn TURN relay
 |---------|-----------|-------|------------|
 | `registry` | `debian:bookworm-slim` (multi-stage: Node + Rust) | `8080` | — |
 | `sidecar` | `debian:bookworm-slim` (multi-stage: Rust) | — | `registry` (healthy) |
-| `agent` | `python:3.13-slim-bookworm` | — | `registry` (healthy), `sidecar` (started) |
+| `agent` | `python:3.12-slim-bookworm` | — | `registry` (healthy), `sidecar` (started) |
 | `coturn` | `coturn/coturn:4` | `3478/udp`, `3478/tcp` | — (profile: `turn`) |
 
 ### Volumes
@@ -384,7 +380,7 @@ docker compose --profile turn up   # include coturn TURN relay
 |------|-------------|--------|
 | `registry/Dockerfile` | `hub-builder` (Node 22) → `rust-builder` (Rust 1.87) → `debian:bookworm-slim` | Registry binary + hub static assets |
 | `sidecar/Dockerfile` | `builder` (Rust 1.87) → `debian:bookworm-slim` | Sidecar binary |
-| `agent/Dockerfile` | `python:3.13-slim-bookworm` | chatixia Python package |
+| `agent/Dockerfile` | `python:3.12-slim-bookworm` | chatixia Python package |
 
 ---
 
@@ -393,7 +389,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-019) |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-020) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |

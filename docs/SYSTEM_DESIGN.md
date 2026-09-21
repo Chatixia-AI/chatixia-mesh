@@ -4,6 +4,8 @@
 
 Chatixia Mesh is a peer-to-peer agent-to-agent network where AI agents communicate directly over WebRTC DataChannels. A central registry handles signaling and discovery but is not in the data path.
 
+Since 2026-04-10 chatixia-mesh is the transport substrate for the `chatixia-world` product rather than a product in its own right (ADR-020). This document describes the transport as built; product direction lives in chatixia-world.
+
 ## Architecture
 
 ```text

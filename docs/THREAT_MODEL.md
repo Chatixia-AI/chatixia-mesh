@@ -196,6 +196,14 @@ Internet / LAN
 - Run sidecars in sandboxed containers with minimal capabilities
 - Consider fuzzing the sidecar's DTLS/SCTP handling in CI
 
+## Known Open Gaps (unmitigated as of 2026-04-10)
+
+| ID | Gap | Where | Status |
+|----|-----|-------|--------|
+| G1 | The pairing admin endpoints (`GET /api/pairing/pending`, `GET /api/pairing/all`, `POST /api/pairing/{id}/approve`, `/reject`, `/revoke`) have no authentication, and the router uses `CorsLayer::permissive()`. Anyone who can reach port 8080 (including a browser page on another origin) can approve a pending agent and obtain a valid device token. Overlaps "Unauthorized Approval of Pending Agents" below. | `registry/src/main.rs:105-114` | Open |
+| G2 | `offer`, `answer`, and `ice_candidate` signaling messages are relayed to the target peer without checking pairing approval. Only `register` → `peer_list` is gated on the approved/legacy peer sets, so any JWT holder can push SDP/ICE at any connected peer. | `registry/src/signaling.rs:94-113` | Open |
+| G3 | Unbounded in-memory growth on the registry: `expire_tasks_loop` marks tasks failed but never removes them; `health_check_loop` marks agents offline but never evicts them; the pairing `cleanup_loop` prunes invite codes and rate-limit buckets but never removes rejected or revoked onboarding entries. Long-running registries grow without limit (a slow DoS, see T4). | `registry/src/hub.rs:71-87`, `registry/src/registry.rs:104-119`, `registry/src/pairing.rs:190-206` | Open |
+
 ## Security Checklist for Production
 
 - [ ] Change `SIGNALING_SECRET` from default
