@@ -345,7 +345,7 @@ Atmospheric Luminescence design system — light-mode glassmorphic. Inline CSS w
 | `agent.yaml.example` | Agent configuration: name, registry URL, LLM provider, sidecar config, skills (the example's `goals` key is not parsed by `config.py`) |
 | `api_keys.json` | API key → peer_id/role mappings (not committed — in `.gitignore`) |
 | `Cargo.toml` | Rust workspace: members `registry`, `sidecar` |
-| `hub/package.json` | Hub dependencies: React 19, Vite 6, TypeScript 5.7 |
+| `hub/package.json` | Hub dependencies: React 19.3, Vite 8, TypeScript 6, @vitejs/plugin-react 6 (build with pnpm 10) |
 | `agent/pyproject.toml` | Agent dependencies: openai, mcp, fastapi, psycopg, structlog, pyyaml |
 
 ---
