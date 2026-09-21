@@ -50,8 +50,7 @@ async fn main() -> Result<()> {
     let ipc_mesh = mesh.clone();
     let ipc_to_agent_tx = to_agent_tx.clone();
     let ipc_handle = tokio::spawn(async move {
-        if let Err(e) = ipc::serve(&ipc_socket_path, to_agent_rx, ipc_mesh, ipc_to_agent_tx).await
-        {
+        if let Err(e) = ipc::serve(&ipc_socket_path, to_agent_rx, ipc_mesh, ipc_to_agent_tx).await {
             error!("[IPC] server error: {}", e);
         }
     });
@@ -60,9 +59,15 @@ async fn main() -> Result<()> {
     let mesh_for_sig = mesh.clone();
     let peer_id = token.peer_id.clone();
     let sig_handle = tokio::spawn(async move {
-        if let Err(e) =
-            signaling::run(&signaling_url, &token_url, &api_key, &peer_id, mesh_for_sig, to_agent_tx)
-                .await
+        if let Err(e) = signaling::run(
+            &signaling_url,
+            &token_url,
+            &api_key,
+            &peer_id,
+            mesh_for_sig,
+            to_agent_tx,
+        )
+        .await
         {
             error!("[SIG] fatal error: {}", e);
         }

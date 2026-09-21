@@ -14,13 +14,13 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::data_channel::RTCDataChannel;
-use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::interceptor::registry::Registry;
-use webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy;
-use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_gatherer_state::RTCIceGathererState;
+use webrtc::ice_transport::ice_server::RTCIceServer;
+use webrtc::interceptor::registry::Registry;
+use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
+use webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
 
@@ -182,13 +182,14 @@ fn setup_ice_forwarding(
 fn setup_datachannel_handler(
     dc: Arc<RTCDataChannel>,
     remote_peer_id: &str,
-    _mesh: Arc<MeshManager>,
+    mesh: Arc<MeshManager>,
     to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
 ) {
     let rpid = remote_peer_id.to_string();
 
-    // Clone for on_open before on_message takes ownership
+    // Clone for on_open/on_close before on_message takes ownership
     let to_agent_for_open = to_agent_tx.clone();
+    let to_agent_for_close = to_agent_tx.clone();
 
     // Register on_message IMMEDIATELY (before on_open) to not miss early messages
     dc.on_message(Box::new(move |msg: DataChannelMessage| {
@@ -215,14 +216,31 @@ fn setup_datachannel_handler(
         })
     }));
 
+    // Register the channel in the mesh only once it is actually open, so that
+    // `is_connected()` is false during negotiation and a failed handshake can
+    // be retried on the next peer_list.
     let rpid2 = remote_peer_id.to_string();
     let label = dc.label().to_owned();
+    let dc_for_open = dc.clone();
+    let mesh_for_open = mesh.clone();
     dc.on_open(Box::new(move || {
         info!("[DC] channel '{}' open with peer {}", label, rpid2);
+        mesh_for_open.set_channel(&rpid2, dc_for_open.clone());
         // Notify Python agent about new peer
         let _ = to_agent_for_open.send(IpcMessage {
             msg_type: ipc_types::PEER_CONNECTED.into(),
             payload: serde_json::json!({ "peer_id": rpid2 }),
+        });
+        Box::pin(async {})
+    }));
+
+    let rpid3 = remote_peer_id.to_string();
+    dc.on_close(Box::new(move || {
+        info!("[DC] channel closed with peer {}", rpid3);
+        mesh.remove_peer(&rpid3);
+        let _ = to_agent_for_close.send(IpcMessage {
+            msg_type: ipc_types::PEER_DISCONNECTED.into(),
+            payload: serde_json::json!({ "peer_id": rpid3 }),
         });
         Box::pin(async {})
     }));
@@ -251,9 +269,8 @@ pub async fn initiate_connection(
     let dc = pc.create_data_channel("mesh", None).await?;
     setup_datachannel_handler(dc.clone(), remote_peer_id, mesh.clone(), to_agent_tx);
 
-    // Store peer connection and channel
+    // Store peer connection (the channel is registered in on_open)
     mesh.add_peer(remote_peer_id, pc.clone());
-    mesh.set_channel(remote_peer_id, dc);
 
     // Create offer
     let offer = pc.create_offer(None).await?;
@@ -302,10 +319,7 @@ pub async fn handle_offer(
         let mesh = mesh_for_dc.clone();
         let to_agent = to_agent.clone();
 
-        // Set channel in mesh manager
-        mesh.set_channel(&rpid, dc.clone());
-
-        // Wire up message handling
+        // Wire up message handling (channel is registered in mesh on open)
         setup_datachannel_handler(dc, &rpid, mesh, to_agent);
 
         Box::pin(async {})
@@ -344,7 +358,10 @@ mod tests {
     fn test_generate_turn_credentials_format() {
         let (username, password) = generate_turn_credentials("test-secret", 86400);
         // Username should be "{expiry}:mesh"
-        assert!(username.ends_with(":mesh"), "username should end with ':mesh'");
+        assert!(
+            username.ends_with(":mesh"),
+            "username should end with ':mesh'"
+        );
         let expiry_str = username.split(':').next().unwrap();
         let expiry: u64 = expiry_str.parse().expect("expiry should be a number");
         let now = SystemTime::now()
@@ -365,7 +382,10 @@ mod tests {
     fn test_generate_turn_credentials_different_secrets_differ() {
         let (_, pass1) = generate_turn_credentials("secret-1", 86400);
         let (_, pass2) = generate_turn_credentials("secret-2", 86400);
-        assert_ne!(pass1, pass2, "different secrets should produce different passwords");
+        assert_ne!(
+            pass1, pass2,
+            "different secrets should produce different passwords"
+        );
     }
 
     #[test]
@@ -390,47 +410,59 @@ mod tests {
         assert!(expiry <= now + 61);
     }
 
-    #[test]
-    fn test_ice_servers_from_env_default() {
-        // Clear TURN env vars to test default behavior
+    /// Serializes tests that mutate process-wide TURN_* env vars, since the
+    /// test harness runs tests in parallel threads.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn clear_turn_env() {
         std::env::remove_var("TURN_URL");
         std::env::remove_var("TURN_SECRET");
         std::env::remove_var("TURN_USERNAME");
         std::env::remove_var("TURN_PASSWORD");
+    }
+
+    #[test]
+    fn test_ice_servers_from_env_default() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Clear TURN env vars to test default behavior
+        clear_turn_env();
         let servers = ice_servers_from_env();
-        assert_eq!(servers.len(), 1, "should have only STUN when no TURN configured");
+        assert_eq!(
+            servers.len(),
+            1,
+            "should have only STUN when no TURN configured"
+        );
         assert!(servers[0].urls[0].starts_with("stun:"));
+        clear_turn_env();
     }
 
     #[test]
     fn test_ice_servers_from_env_with_turn_secret() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_turn_env();
         std::env::set_var("TURN_URL", "turn:my-turn.example.com:3478");
         std::env::set_var("TURN_SECRET", "my-shared-secret");
-        std::env::remove_var("TURN_USERNAME");
-        std::env::remove_var("TURN_PASSWORD");
         let servers = ice_servers_from_env();
+        // Cleanup before asserting so a failure does not leak env into other tests
+        clear_turn_env();
         assert_eq!(servers.len(), 2, "should have STUN + TURN");
         assert_eq!(servers[1].urls[0], "turn:my-turn.example.com:3478");
         assert!(servers[1].username.ends_with(":mesh"));
         assert!(!servers[1].credential.is_empty());
-        // Cleanup
-        std::env::remove_var("TURN_URL");
-        std::env::remove_var("TURN_SECRET");
     }
 
     #[test]
     fn test_ice_servers_from_env_with_static_credentials() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_turn_env();
         std::env::set_var("TURN_URL", "turn:turn.local:3478");
-        std::env::remove_var("TURN_SECRET");
         std::env::set_var("TURN_USERNAME", "user1");
         std::env::set_var("TURN_PASSWORD", "pass1");
         let servers = ice_servers_from_env();
+        // Cleanup before asserting so a failure does not leak env into other tests
+        clear_turn_env();
         assert_eq!(servers.len(), 2);
         assert_eq!(servers[1].username, "user1");
         assert_eq!(servers[1].credential, "pass1");
-        // Cleanup
-        std::env::remove_var("TURN_URL");
-        std::env::remove_var("TURN_USERNAME");
-        std::env::remove_var("TURN_PASSWORD");
     }
 }

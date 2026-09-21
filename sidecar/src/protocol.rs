@@ -286,7 +286,10 @@ mod tests {
         };
         let json_str = serde_json::to_string(&msg).unwrap();
         let decoded: SignalingMessage = serde_json::from_str(&json_str).unwrap();
-        assert_eq!(decoded.payload["sdp"], "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\n");
+        assert_eq!(
+            decoded.payload["sdp"],
+            "v=0\r\no=- 123 456 IN IP4 0.0.0.0\r\n"
+        );
     }
 
     #[test]
@@ -378,11 +381,16 @@ mod tests {
     fn test_mesh_message_all_types_serialize() {
         // Verify all mesh_types constants can be used in MeshMessage
         let types = [
-            mesh_types::PING, mesh_types::PONG,
-            mesh_types::TASK_REQUEST, mesh_types::TASK_RESPONSE,
-            mesh_types::TASK_STREAM_CHUNK, mesh_types::SKILL_QUERY,
-            mesh_types::SKILL_RESPONSE, mesh_types::AGENT_STATUS,
-            mesh_types::AGENT_PROMPT, mesh_types::AGENT_RESPONSE,
+            mesh_types::PING,
+            mesh_types::PONG,
+            mesh_types::TASK_REQUEST,
+            mesh_types::TASK_RESPONSE,
+            mesh_types::TASK_STREAM_CHUNK,
+            mesh_types::SKILL_QUERY,
+            mesh_types::SKILL_RESPONSE,
+            mesh_types::AGENT_STATUS,
+            mesh_types::AGENT_PROMPT,
+            mesh_types::AGENT_RESPONSE,
             mesh_types::AGENT_STREAM_CHUNK,
         ];
         for t in types {

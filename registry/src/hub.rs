@@ -307,7 +307,7 @@ mod tests {
             .insert("t3".into(), make_task("t3", "search", "a2", "pending"));
         // a1 should get t1 (targeted) and potentially t2 (also targeted)
         let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
-        assert!(result.len() >= 1);
+        assert!(!result.is_empty());
     }
 
     #[test]

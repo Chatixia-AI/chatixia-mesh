@@ -80,7 +80,11 @@ pub async fn run(
         info!("[SIG] connecting (attempt {})...", attempt);
         match connect_once(&ws_url, peer_id, sig_tx, sig_rx, &mesh, &to_agent_tx).await {
             Ok(()) => {
-                warn!("[SIG] connection closed cleanly, reconnecting...");
+                // The session was established (WS handshake succeeded) and later
+                // dropped: reset backoff so the next reconnect is immediate.
+                warn!("[SIG] connection closed, reconnecting...");
+                attempt = 0;
+                backoff = INITIAL_BACKOFF;
             }
             Err(e) => {
                 warn!("[SIG] connection error: {}, reconnecting...", e);
@@ -89,9 +93,10 @@ pub async fn run(
 
         // Clean up stale WebRTC peers before reconnecting
         mesh.clear_all_peers().await;
+        mesh.clear_signaling_tx();
 
         if attempt == 0 {
-            // First disconnect — reconnect immediately
+            // First failure after a working session — reconnect immediately
             info!("[SIG] reconnecting immediately (first attempt)");
         } else {
             info!("[SIG] reconnecting in {:?}", backoff);
@@ -102,7 +107,11 @@ pub async fn run(
     }
 }
 
-/// Single signaling connection attempt — returns when the WebSocket closes.
+/// Single signaling connection attempt.
+///
+/// Returns `Err` only if the WebSocket handshake fails. Once connected, it
+/// returns `Ok(())` when the session ends (for any reason), so the caller can
+/// distinguish "never connected" from "connected then dropped" for backoff.
 async fn connect_once(
     ws_url: &str,
     peer_id: &str,
@@ -115,7 +124,9 @@ async fn connect_once(
     let (mut ws_write, mut ws_read) = ws_stream.split();
     info!("[SIG] connected to signaling server");
 
-    // Reset backoff on successful connect (caller tracks this via attempt counter)
+    // Expose the outbound signaling sender so the IPC `connect` command can
+    // initiate WebRTC offers for this session.
+    mesh.set_signaling_tx(sig_tx.clone());
 
     // Send register message
     let register = SignalingMessage {
@@ -124,9 +135,13 @@ async fn connect_once(
         target_id: None,
         payload: serde_json::Value::Null,
     };
-    ws_write
+    if let Err(e) = ws_write
         .send(Message::Text(serde_json::to_string(&register)?.into()))
-        .await?;
+        .await
+    {
+        warn!("[SIG] failed to send register: {}", e);
+        return Ok(());
+    }
 
     // Forward outbound signaling messages
     let ws_write_task = tokio::spawn(async move {

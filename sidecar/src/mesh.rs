@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -26,6 +27,8 @@ pub struct MeshManager {
     peers: DashMap<String, MeshPeer>,
     /// peer_id → DataChannel (shortcut for sending)
     channels: DashMap<String, Arc<RTCDataChannel>>,
+    /// Outbound sender for the current signaling session (None when disconnected).
+    signaling_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<String>>>,
 }
 
 impl MeshManager {
@@ -34,7 +37,26 @@ impl MeshManager {
             local_peer_id,
             peers: DashMap::new(),
             channels: DashMap::new(),
+            signaling_tx: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Set the outbound signaling sender for the current session.
+    pub fn set_signaling_tx(&self, tx: mpsc::UnboundedSender<String>) {
+        *self.signaling_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+    }
+
+    /// Clear the signaling sender when the session drops.
+    pub fn clear_signaling_tx(&self) {
+        *self.signaling_tx.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Get the outbound signaling sender, if a session is active.
+    pub fn signaling_tx(&self) -> Option<mpsc::UnboundedSender<String>> {
+        self.signaling_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Store a peer connection.
@@ -194,9 +216,11 @@ mod tests {
             let mgr = MeshManager::new("local-5".into());
             let api = webrtc::api::APIBuilder::new().build();
             let pc = std::sync::Arc::new(
-                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                    .await
-                    .unwrap(),
+                api.new_peer_connection(
+                    webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                )
+                .await
+                .unwrap(),
             );
             mgr.add_peer("remote-1", pc.clone());
             assert!(mgr.get_pc("remote-1").is_some());
@@ -217,9 +241,11 @@ mod tests {
             let mgr = MeshManager::new("local-6".into());
             let api = webrtc::api::APIBuilder::new().build();
             let pc = std::sync::Arc::new(
-                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                    .await
-                    .unwrap(),
+                api.new_peer_connection(
+                    webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                )
+                .await
+                .unwrap(),
             );
             mgr.add_peer("remote-2", pc.clone());
             assert!(mgr.get_pc("remote-2").is_some());
@@ -239,9 +265,11 @@ mod tests {
             let mgr = MeshManager::new("local-7".into());
             let api = webrtc::api::APIBuilder::new().build();
             let pc = std::sync::Arc::new(
-                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                    .await
-                    .unwrap(),
+                api.new_peer_connection(
+                    webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                )
+                .await
+                .unwrap(),
             );
             let dc = pc.create_data_channel("test", None).await.unwrap();
             mgr.add_peer("remote-3", pc.clone());
@@ -262,14 +290,18 @@ mod tests {
             let mgr = MeshManager::new("local-8".into());
             let api = webrtc::api::APIBuilder::new().build();
             let pc1 = std::sync::Arc::new(
-                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                    .await
-                    .unwrap(),
+                api.new_peer_connection(
+                    webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                )
+                .await
+                .unwrap(),
             );
             let pc2 = std::sync::Arc::new(
-                api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                    .await
-                    .unwrap(),
+                api.new_peer_connection(
+                    webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                )
+                .await
+                .unwrap(),
             );
             let dc1 = pc1.create_data_channel("c1", None).await.unwrap();
             let dc2 = pc2.create_data_channel("c2", None).await.unwrap();
@@ -296,9 +328,11 @@ mod tests {
             let api = webrtc::api::APIBuilder::new().build();
             for i in 0..5 {
                 let pc = std::sync::Arc::new(
-                    api.new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration::default())
-                        .await
-                        .unwrap(),
+                    api.new_peer_connection(
+                        webrtc::peer_connection::configuration::RTCConfiguration::default(),
+                    )
+                    .await
+                    .unwrap(),
                 );
                 let dc = pc.create_data_channel("ch", None).await.unwrap();
                 mgr.add_peer(&format!("peer-{}", i), pc);
