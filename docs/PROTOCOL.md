@@ -75,10 +75,18 @@ JSON-line protocol between Python agent and Rust sidecar. One JSON object per li
 
 ```json
 {"type": "message", "payload": {"from_peer": "peer-abc", "message": {...}}}
-{"type": "peer_connected", "payload": {"peer_id": "peer-abc"}}
+{"type": "peer_connected", "payload": {"peer_id": "peer-abc", "local_candidate_type": "srflx", "remote_candidate_type": "relay"}}
 {"type": "peer_disconnected", "payload": {"peer_id": "peer-abc"}}
 {"type": "peer_list", "payload": {"peers": ["peer-abc", "peer-def"]}}
 ```
+
+`peer_connected` is sent when the DataChannel opens. `local_candidate_type` and
+`remote_candidate_type` are the ICE candidate types of the selected pair
+(`host`, `srflx`, `prflx` or `relay`) and show whether traffic is direct,
+NAT-traversed or TURN-relayed. Both fields are omitted when the sidecar has
+not been told the selected pair yet; `peer_id` is always present. The sidecar
+also logs the full pair (`[ICE] <peer> selected pair: local=<typ> <addr>:<port>
+remote=<typ> <addr>:<port>`) when the connection reaches `connected`.
 
 ## 4. Registry REST API
 

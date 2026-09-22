@@ -1,6 +1,6 @@
 //! WebRTC peer connection management — create offers, handle offers, wire DataChannels.
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
@@ -14,6 +14,7 @@ use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::APIBuilder;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::data_channel::RTCDataChannel;
+use webrtc::ice_transport::ice_candidate_pair::RTCIceCandidatePair;
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_gatherer_state::RTCIceGathererState;
 use webrtc::ice_transport::ice_server::RTCIceServer;
@@ -165,6 +166,15 @@ fn setup_ice_forwarding(
     let pc_weak = Arc::downgrade(pc);
     pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
         info!("[WEBRTC] {} connection state: {}", rpid, state);
+        if state == RTCPeerConnectionState::Connected {
+            if let Some(pc) = pc_weak.upgrade() {
+                let rpid = rpid.clone();
+                tokio::spawn(async move {
+                    let pair = selected_candidate_pair(&pc).await;
+                    log_selected_pair(&rpid, pair.as_ref());
+                });
+            }
+        }
         let ended = matches!(
             state,
             RTCPeerConnectionState::Failed
@@ -172,7 +182,7 @@ fn setup_ice_forwarding(
                 | RTCPeerConnectionState::Closed
         );
         // Ignore connections already replaced (e.g. after offer glare).
-        if ended && mesh.remove_peer_if_pc(&rpid, std::sync::Weak::as_ptr(&pc_weak)) {
+        if ended && mesh.remove_peer_if_pc(&rpid, Weak::as_ptr(&pc_weak)) {
             let _ = to_agent_tx.send(IpcMessage {
                 msg_type: ipc_types::PEER_DISCONNECTED.into(),
                 payload: serde_json::json!({ "peer_id": rpid }),
@@ -226,12 +236,54 @@ fn setup_ice_forwarding(
     }));
 }
 
+/// The ICE candidate pair currently carrying this connection's traffic, if the
+/// ICE agent has nominated one yet.
+async fn selected_candidate_pair(pc: &RTCPeerConnection) -> Option<RTCIceCandidatePair> {
+    pc.sctp()
+        .transport()
+        .ice_transport()
+        .get_selected_candidate_pair()
+        .await
+}
+
+/// One log line that proves whether traffic went host, srflx or relay.
+fn log_selected_pair(remote_peer_id: &str, pair: Option<&RTCIceCandidatePair>) {
+    match pair {
+        Some(p) => info!(
+            "[ICE] {} selected pair: local={} {}:{} remote={} {}:{}",
+            remote_peer_id,
+            p.local.typ,
+            p.local.address,
+            p.local.port,
+            p.remote.typ,
+            p.remote.address,
+            p.remote.port
+        ),
+        None => info!("[ICE] {} selected pair: not available yet", remote_peer_id),
+    }
+}
+
+/// `peer_connected` IPC payload. The candidate-type fields are only present
+/// when the selected pair is already known.
+fn peer_connected_payload(
+    remote_peer_id: &str,
+    pair: Option<&RTCIceCandidatePair>,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({ "peer_id": remote_peer_id });
+    if let Some(p) = pair {
+        payload["local_candidate_type"] = p.local.typ.to_string().into();
+        payload["remote_candidate_type"] = p.remote.typ.to_string().into();
+    }
+    payload
+}
+
 /// Wire up DataChannel message handling — forwards messages to Python agent via IPC.
 fn setup_datachannel_handler(
     dc: Arc<RTCDataChannel>,
     remote_peer_id: &str,
     mesh: Arc<MeshManager>,
     to_agent_tx: mpsc::UnboundedSender<IpcMessage>,
+    pc: Weak<RTCPeerConnection>,
 ) {
     let rpid = remote_peer_id.to_string();
 
@@ -274,12 +326,21 @@ fn setup_datachannel_handler(
     dc.on_open(Box::new(move || {
         info!("[DC] channel '{}' open with peer {}", label, rpid2);
         mesh_for_open.set_channel(&rpid2, dc_for_open.clone());
-        // Notify Python agent about new peer
-        let _ = to_agent_for_open.send(IpcMessage {
-            msg_type: ipc_types::PEER_CONNECTED.into(),
-            payload: serde_json::json!({ "peer_id": rpid2 }),
-        });
-        Box::pin(async {})
+        let pc = pc.upgrade();
+        let rpid = rpid2.clone();
+        let to_agent = to_agent_for_open.clone();
+        Box::pin(async move {
+            // Tell the agent which candidate types carry this peer's traffic
+            // (host / srflx / relay); omitted when the pair is not known yet.
+            let pair = match &pc {
+                Some(pc) => selected_candidate_pair(pc).await,
+                None => None,
+            };
+            let _ = to_agent.send(IpcMessage {
+                msg_type: ipc_types::PEER_CONNECTED.into(),
+                payload: peer_connected_payload(&rpid, pair.as_ref()),
+            });
+        })
     }));
 
     let rpid3 = remote_peer_id.to_string();
@@ -287,7 +348,7 @@ fn setup_datachannel_handler(
     dc.on_close(Box::new(move || {
         info!("[DC] channel closed with peer {}", rpid3);
         // Only tear down the peer if this is still its live channel.
-        if mesh.remove_peer_if_channel(&rpid3, std::sync::Weak::as_ptr(&dc_weak)) {
+        if mesh.remove_peer_if_channel(&rpid3, Weak::as_ptr(&dc_weak)) {
             let _ = to_agent_for_close.send(IpcMessage {
                 msg_type: ipc_types::PEER_DISCONNECTED.into(),
                 payload: serde_json::json!({ "peer_id": rpid3 }),
@@ -318,7 +379,13 @@ pub async fn initiate_connection(
 
     // Create DataChannel
     let dc = pc.create_data_channel("mesh", None).await?;
-    setup_datachannel_handler(dc.clone(), remote_peer_id, mesh.clone(), to_agent_tx);
+    setup_datachannel_handler(
+        dc.clone(),
+        remote_peer_id,
+        mesh.clone(),
+        to_agent_tx,
+        Arc::downgrade(&pc),
+    );
 
     // Store peer connection (the channel is registered in on_open)
     mesh.add_peer(remote_peer_id, pc.clone());
@@ -365,13 +432,16 @@ pub async fn handle_offer(
     let rpid = remote_peer_id.to_string();
     let mesh_for_dc = mesh.clone();
     let to_agent = to_agent_tx.clone();
+    // Weak: this callback is owned by the connection it points at.
+    let pc_for_dc = Arc::downgrade(&pc);
     pc.on_data_channel(Box::new(move |dc: Arc<RTCDataChannel>| {
         let rpid = rpid.clone();
         let mesh = mesh_for_dc.clone();
         let to_agent = to_agent.clone();
+        let pc = pc_for_dc.clone();
 
         // Wire up message handling (channel is registered in mesh on open)
-        setup_datachannel_handler(dc, &rpid, mesh, to_agent);
+        setup_datachannel_handler(dc, &rpid, mesh, to_agent, pc);
 
         Box::pin(async {})
     }));
@@ -413,6 +483,38 @@ mod tests {
         assert!(!should_redial(RTCPeerConnectionState::Closed));
         assert!(!should_redial(RTCPeerConnectionState::Connected));
         assert!(!should_redial(RTCPeerConnectionState::Connecting));
+    }
+
+    #[test]
+    fn test_peer_connected_payload_without_pair() {
+        let payload = peer_connected_payload("peer-abc", None);
+        assert_eq!(payload["peer_id"], "peer-abc");
+        assert!(payload.get("local_candidate_type").is_none());
+        assert!(payload.get("remote_candidate_type").is_none());
+    }
+
+    #[test]
+    fn test_peer_connected_payload_with_pair() {
+        use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+        use webrtc::ice_transport::ice_candidate_type::RTCIceCandidateType;
+
+        let local = RTCIceCandidate {
+            typ: RTCIceCandidateType::Srflx,
+            address: "203.0.113.1".into(),
+            port: 50000,
+            ..Default::default()
+        };
+        let remote = RTCIceCandidate {
+            typ: RTCIceCandidateType::Relay,
+            address: "198.51.100.2".into(),
+            port: 3478,
+            ..Default::default()
+        };
+        let pair = RTCIceCandidatePair::new(local, remote);
+        let payload = peer_connected_payload("peer-abc", Some(&pair));
+        assert_eq!(payload["peer_id"], "peer-abc");
+        assert_eq!(payload["local_candidate_type"], "srflx");
+        assert_eq!(payload["remote_candidate_type"], "relay");
     }
 
     #[test]

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -141,3 +142,46 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Release binaries (sidecar + registry, native builds) ───────
+  # Not on PRs: a release build is several minutes per target.
+  release-binaries:
+    name: Release Binaries
+    runs-on: ${{ matrix.runner }}
+    if: github.event_name == 'push'
+    permissions:
+      contents: write # attach tarballs to the GitHub release on v* tags
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: cargo build --release
+        run: cargo build --release -p chatixia-sidecar -p chatixia-registry
+      - name: Package
+        run: |
+          set -euo pipefail
+          NAME="chatixia-mesh-${{ matrix.target }}"
+          mkdir -p "dist/$NAME"
+          cp target/release/chatixia-sidecar target/release/chatixia-registry "dist/$NAME/"
+          (cd "dist/$NAME" && sha256sum chatixia-sidecar chatixia-registry > sha256sums.txt && cat sha256sums.txt)
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chatixia-mesh-${{ matrix.target }}
+          path: dist/chatixia-mesh-${{ matrix.target }}/
+          if-no-files-found: error
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/chatixia-mesh-${{ matrix.target }}.tar.gz

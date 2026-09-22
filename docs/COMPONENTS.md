@@ -134,7 +134,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 | `src/main.rs` | Entry point, token exchange, component wiring |
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
 | `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration |
-| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding with diagnostic logging (candidate type/address, connection state, gathering state), DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`), `ICE_TRANSPORT_POLICY=relay` support |
+| `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding with diagnostic logging (candidate type/address, connection state, gathering state, selected candidate pair on `connected`), DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`), `ICE_TRANSPORT_POLICY=relay` support |
 | `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels; buffers early remote ICE candidates until a remote description is set; identity-checked peer removal so a connection replaced during glare cannot remove its replacement (ADR-021) |
 | `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
 
@@ -155,7 +155,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 
 **IPC** (`protocol::ipc_types`):
 - Agent → Sidecar: `send` (message to a specific peer), `broadcast` (to all peers), `connect` (payload `{"peer_id": ...}`, `target_peer_id` also accepted; initiate a connection to a peer), `list_peers` (request connected peers)
-- Sidecar → Agent: `message` (received from a peer), `peer_connected`, `peer_disconnected`, `peer_list` (response to `list_peers`)
+- Sidecar → Agent: `message` (received from a peer), `peer_connected` (payload `{"peer_id": ..., "local_candidate_type": ..., "remote_candidate_type": ...}`; the two candidate-type fields are `host`/`srflx`/`prflx`/`relay` and are omitted when the selected ICE pair is not known yet), `peer_disconnected`, `peer_list` (response to `list_peers`)
 
 ### Environment Variables
 
@@ -418,7 +418,7 @@ GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` dire
 
 | Workflow | Trigger | Purpose |
 | -------- | ------- | ------- |
-| `ci.yml` | Push to `main`, PRs to `main` | Rust lint/test, Python lint/test, Hub build, Docker build (PRs), **version bump check** (PRs) |
+| `ci.yml` | Push to `main`, `v*` tags, PRs to `main` | Rust lint/test, Python lint/test, Hub build, Docker build (PRs), **version bump check** (PRs), **release binaries** (pushes and tags only) |
 | `publish-pypi.yml` | GitHub Release (`v*` tag) | Build and publish `chatixia` package to PyPI via OIDC trusted publisher |
 | `pages.yml` | Push to `main` (`site/**`), manual | Deploy documentation site to GitHub Pages |
 
@@ -433,6 +433,7 @@ GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` dire
 | `hub` | `hub/` | `pnpm install` + `tsc --noEmit` + `pnpm build` |
 | `python-version-check` | `agent/` (PRs only) | Fails if `agent/chatixia/**` or `agent/pyproject.toml` changed but version wasn't bumped |
 | `docker` | All Dockerfiles (PRs only) | Matrix build of registry, sidecar, agent images |
+| `release-binaries` | `Cargo.toml` workspace (push to `main` and `v*` tags only) | Native `cargo build --release` of `chatixia-sidecar` + `chatixia-registry` on `ubuntu-24.04-arm` (aarch64, e.g. Raspberry Pi 5) and `ubuntu-latest` (x86_64). Uploads artifact `chatixia-mesh-<target>` (both binaries + `sha256sums.txt`); on a `v*` tag also attaches `chatixia-mesh-<target>.tar.gz` to the GitHub release. Targets: `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu` |
 
 ### PyPI Publish (`publish-pypi.yml`)
 
