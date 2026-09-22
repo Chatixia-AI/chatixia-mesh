@@ -155,16 +155,18 @@ If UDP is fully blocked, the system falls back to the HTTP task queue through th
 
 ## Step 5: Create API Keys
 
-Edit `api_keys.json` in the registry's working directory:
+Edit `api_keys.json` in the registry's working directory (or point `API_KEYS_FILE` at it). The entries live under a `keys` object:
 
 ```json
 {
-  "ak_work_pc": { "peer_id": "work-pc", "role": "agent" },
-  "ak_rpi_home": { "peer_id": "rpi-home", "role": "agent" }
+  "keys": {
+    "ak_work_pc": { "peer_id": "work-pc", "role": "agent" },
+    "ak_rpi_home": { "peer_id": "rpi-home", "role": "agent" }
+  }
 }
 ```
 
-Restart the registry to pick up changes (or it reads on startup).
+Generate real keys with `openssl rand -hex 12`; the registry reads the file on startup, so restart it after changes.
 
 ## Step 6: Run Agents
 
@@ -210,6 +212,10 @@ CHATIXIA_AGENT_ID=work-agent
 ```bash
 chatixia run
 ```
+
+### chatixia-world across two NATs
+
+For the world (Phase 2, ADR-020) the same shape is scripted end to end: registry plus quick tunnels on the Pi, The-Alpha's world on a laptop elsewhere. See `chatixia-world/docs/CROSS_NAT_RUN.md` and `scripts/cross-nat/` there. The evidence the sidecar prints for it is the `[ICE] <peer> selected pair: local=<typ> … remote=<typ> …` line (`srflx`, `prflx` or `relay` means a real NAT crossing; `host` means same LAN), also carried on the `peer_connected` IPC message.
 
 ## What Happens Automatically
 
