@@ -528,3 +528,21 @@ The registry-side race (registering on upgrade) is left as is: glare is legal in
 - (-) Pure-unit coverage still cannot exercise these paths; the evidence is the chatixia-world `scripts/mesh-demo.sh` run. A two-machine run across NATs is still outstanding.
 
 **Related:** ADR-002 (full mesh), ADR-016 (P2P task execution), ADR-020 (substrate for chatixia-world).
+
+## ADR-022: Re-dial a Peer Whose Connection Fails While Signaling Is Up
+
+**Date:** 2026-09-22
+**Status:** Accepted
+
+**Context:** During the first keeper-whisper test, both sidecars' ICE agents moved to `Failed` at the same instant, about five minutes after the last DataChannel message (the laptop most likely dozed; an Ollama request in flight at the same moment also hung for 299 s). Both sidecars removed the peer and reported `peer_disconnected`, and then nothing happened for the rest of the session. The signaling WebSocket had never dropped, so the only existing recovery path (re-register on signaling reconnect, ADR-021) never ran. On one machine this costs a demo restart; on the Pi over wifi it would make the H1 cross-NAT run fail its "no sidecar restart" condition on the first blip.
+
+**Decision:** In the peer connection state handler, when the state becomes `Failed` or `Disconnected` and the connection was still the one on record, wait `REDIAL_DELAY` (3 s), and if the peer is still not connected, send a fresh `register` over the signaling channel kept in `MeshManager::signaling_tx`. The registry answers with a `peer_list`, which runs the normal offer path. Both sides do this, so the glare tie-break from ADR-021 decides who offers. `Closed` is excluded: it means the sidecar closed the connection on purpose (glare yield, shutdown), and re-dialing there would fight the replacement connection.
+
+**Consequences:**
+
+- (+) A failed peer connection now heals itself in about 3 s plus a handshake, with no process restart and no registry change.
+- (+) The same path covers ICE consent timeouts on wifi, which is the failure the Pi run will actually see.
+- (-) If the remote sidecar is gone for good, each failure triggers one extra `register` round trip; there is no retry loop beyond that because a peer that later returns re-registers itself and appears in our `peer_list` via the registry's `peer_joined` path.
+- (-) Still no integration test that can see this; verified by pausing one sidecar with SIGSTOP past the ICE consent timeout and resuming it.
+
+**Related:** ADR-021 (handshake fixes), ADR-020 (substrate for chatixia-world).

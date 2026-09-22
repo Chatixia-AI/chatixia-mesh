@@ -68,6 +68,20 @@ pub(crate) fn generate_turn_credentials(secret: &str, ttl_secs: u64) -> (String,
     (username, password)
 }
 
+/// How long to wait after a peer connection fails before asking the registry
+/// for peers again. Long enough for the other side to notice too, short enough
+/// that a wifi blip costs seconds, not a restart.
+const REDIAL_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// A peer connection that failed or dropped on its own is worth re-dialing;
+/// one we closed deliberately is not.
+fn should_redial(state: RTCPeerConnectionState) -> bool {
+    matches!(
+        state,
+        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Disconnected
+    )
+}
+
 /// Create a new RTCPeerConnection.
 async fn create_peer_connection() -> Result<Arc<RTCPeerConnection>> {
     let mut me = MediaEngine::default();
@@ -146,6 +160,7 @@ fn setup_ice_forwarding(
     }));
 
     let rpid = remote_peer_id.to_string();
+    let local_for_redial = local_peer_id.to_string();
     // Weak, so the callback doesn't keep its own connection alive.
     let pc_weak = Arc::downgrade(pc);
     pc.on_peer_connection_state_change(Box::new(move |state: RTCPeerConnectionState| {
@@ -162,6 +177,36 @@ fn setup_ice_forwarding(
                 msg_type: ipc_types::PEER_DISCONNECTED.into(),
                 payload: serde_json::json!({ "peer_id": rpid }),
             });
+            // The signaling socket is usually still up when a peer connection
+            // dies on its own (laptop sleep, wifi drop, ICE consent timeout),
+            // so nothing else would ever try again. Re-registering makes the
+            // registry send a fresh peer_list, which re-runs the normal offer
+            // path, glare tie-break included. Closed is skipped: that is us
+            // closing a connection on purpose (glare yield, shutdown).
+            if should_redial(state) {
+                let mesh = mesh.clone();
+                let local = local_for_redial.clone();
+                let rpid = rpid.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(REDIAL_DELAY).await;
+                    if mesh.is_connected(&rpid) {
+                        return;
+                    }
+                    match mesh.signaling_tx() {
+                        Some(tx) => {
+                            info!("[SIG] re-dialing {} after connection failure", rpid);
+                            let register = SignalingMessage {
+                                msg_type: "register".into(),
+                                peer_id: local,
+                                target_id: None,
+                                payload: serde_json::Value::Null,
+                            };
+                            let _ = tx.send(serde_json::to_string(&register).unwrap());
+                        }
+                        None => warn!("[SIG] cannot re-dial {}: signaling is down", rpid),
+                    }
+                });
+            }
         }
         Box::pin(async {})
     }));
@@ -360,6 +405,15 @@ pub async fn handle_offer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_should_redial_only_on_involuntary_end() {
+        assert!(should_redial(RTCPeerConnectionState::Failed));
+        assert!(should_redial(RTCPeerConnectionState::Disconnected));
+        assert!(!should_redial(RTCPeerConnectionState::Closed));
+        assert!(!should_redial(RTCPeerConnectionState::Connected));
+        assert!(!should_redial(RTCPeerConnectionState::Connecting));
+    }
 
     #[test]
     fn test_generate_turn_credentials_format() {
