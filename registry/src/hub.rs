@@ -8,7 +8,14 @@ use std::time::Duration;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::admin::RequireCaller;
 use crate::AppState;
+
+/// How long a completed or failed task stays queryable before it is evicted (G3).
+pub const DEFAULT_TASK_RETENTION_SECS: u64 = 3600;
+
+/// How often the expiry/eviction sweep runs.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Task submission payload.
 #[derive(Debug, Deserialize)]
@@ -67,23 +74,34 @@ impl HubState {
         }
     }
 
-    /// Background loop to expire stale tasks.
-    pub async fn expire_tasks_loop(&self) {
+    /// Background loop: expire tasks past their TTL, evict old finished ones.
+    pub async fn expire_tasks_loop(&self, retention: Duration) {
         loop {
-            tokio::time::sleep(Duration::from_secs(30)).await;
-            let now = epoch_now();
-            for mut entry in self.tasks.iter_mut() {
-                let task = entry.value_mut();
-                if task.state == "completed" || task.state == "failed" {
-                    continue;
-                }
-                if now - task.created_at > task.ttl as f64 {
-                    task.state = "failed".into();
-                    task.error = "TTL expired".into();
-                    task.updated_at = now;
-                }
+            tokio::time::sleep(SWEEP_INTERVAL).await;
+            let evicted = self.sweep(epoch_now(), retention);
+            if evicted > 0 {
+                info!("[HUB] evicted {} finished tasks", evicted);
             }
         }
+    }
+
+    /// One pass over the task map: a live task past its TTL becomes `failed`;
+    /// a `completed`/`failed` task last updated more than `retention` ago is
+    /// removed. Returns the number of tasks removed.
+    pub fn sweep(&self, now: f64, retention: Duration) -> usize {
+        let before = self.tasks.len();
+        let retention = retention.as_secs_f64();
+        self.tasks.retain(|_, task| {
+            let finished = task.state == "completed" || task.state == "failed";
+            if !finished && now - task.created_at > task.ttl as f64 {
+                task.state = "failed".into();
+                task.error = "TTL expired".into();
+                task.updated_at = now;
+                return true;
+            }
+            !(finished && now - task.updated_at > retention)
+        });
+        before.saturating_sub(self.tasks.len())
     }
 
     /// Find pending tasks matching an agent's skills.
@@ -117,9 +135,10 @@ fn epoch_now() -> f64 {
 
 // ─── HTTP Handlers ───────────────────────────────────────────────────────
 
-/// POST /api/hub/tasks — submit a task.
+/// POST /api/hub/tasks — submit a task. Needs a caller credential.
 pub async fn submit_task(
     State(state): State<AppState>,
+    _caller: RequireCaller,
     Json(sub): Json<TaskSubmission>,
 ) -> Json<serde_json::Value> {
     let task_id = Uuid::new_v4().to_string()[..12].to_string();
@@ -163,9 +182,10 @@ pub async fn get_task(
     }
 }
 
-/// POST /api/hub/tasks/:task_id — update task state/result.
+/// POST /api/hub/tasks/:task_id — update task state/result. Needs a caller credential.
 pub async fn update_task(
     State(state): State<AppState>,
+    _caller: RequireCaller,
     Path(task_id): Path<String>,
     Json(update): Json<TaskUpdate>,
 ) -> Json<serde_json::Value> {
@@ -261,6 +281,45 @@ mod tests {
             .insert("t1".into(), make_task("t1", "search", "a1", "completed"));
         let result = hub.get_pending_for_agent("a1", &["search".to_string()]);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_sweep_expires_ttl_then_evicts_after_retention() {
+        let hub = HubState::new();
+        let mut t = make_task("t1", "search", "a1", "pending");
+        t.created_at -= 400.0; // ttl is 300
+        hub.tasks.insert("t1".into(), t);
+        let retention = Duration::from_secs(3600);
+
+        let now = epoch_now();
+        assert_eq!(hub.sweep(now, retention), 0);
+        assert_eq!(hub.tasks.get("t1").unwrap().state, "failed");
+        assert_eq!(hub.tasks.get("t1").unwrap().error, "TTL expired");
+
+        // Still inside the retention window
+        assert_eq!(hub.sweep(now + 3599.0, retention), 0);
+        assert!(hub.tasks.get("t1").is_some());
+
+        // Past it
+        assert_eq!(hub.sweep(now + 3601.0, retention), 1);
+        assert!(hub.tasks.get("t1").is_none());
+    }
+
+    #[test]
+    fn test_sweep_keeps_live_tasks_and_recent_results() {
+        let hub = HubState::new();
+        let mut old_done = make_task("done", "", "a1", "completed");
+        old_done.updated_at -= 7200.0;
+        hub.tasks.insert("done".into(), old_done);
+        hub.tasks
+            .insert("fresh".into(), make_task("fresh", "", "a1", "completed"));
+        hub.tasks
+            .insert("live".into(), make_task("live", "", "a1", "assigned"));
+
+        assert_eq!(hub.sweep(epoch_now(), Duration::from_secs(3600)), 1);
+        assert!(hub.tasks.get("done").is_none());
+        assert!(hub.tasks.get("fresh").is_some());
+        assert_eq!(hub.tasks.get("live").unwrap().state, "assigned");
     }
 
     #[test]

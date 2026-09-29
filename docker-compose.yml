@@ -6,7 +6,8 @@
 #   docker compose logs -f         # tail all logs
 #   docker compose down            # stop and remove containers
 #
-# Hub dashboard: http://localhost:8080
+# Hub dashboard: http://localhost:8080  (admin token: see `docker compose logs registry`,
+#                or set REGISTRY_ADMIN_TOKEN in .env)
 # Registry API:  http://localhost:8080/api/
 
 services:
@@ -18,7 +19,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SIGNALING_SECRET: ${SIGNALING_SECRET:-dev-secret-change-me}
+      # Empty SIGNALING_SECRET / REGISTRY_ADMIN_TOKEN → random per run; a generated
+      # admin token is logged once (ADR-024)
+      SIGNALING_SECRET: ${SIGNALING_SECRET:-}
+      REGISTRY_ADMIN_TOKEN: ${REGISTRY_ADMIN_TOKEN:-}
+      REGISTRY_ALLOWED_ORIGINS: ${REGISTRY_ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
       API_KEYS_FILE: /etc/chatixia/api_keys.json
       TURN_URL: ${TURN_URL:-}
       TURN_SECRET: ${TURN_SECRET:-}

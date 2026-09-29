@@ -34,10 +34,19 @@ def _get(url: str) -> dict[str, Any]:
         return {"error": str(e)}
 
 
+def _auth_headers() -> dict[str, str]:
+    """Credential for registry writes (the registry refuses anonymous writes)."""
+    api_key = os.environ.get("API_KEY", "")
+    return {"x-api-key": api_key} if api_key else {}
+
+
 def _post(url: str, data: dict) -> dict:
     body = json.dumps(data).encode()
     req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        url,
+        data=body,
+        headers={"Content-Type": "application/json", **_auth_headers()},
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:

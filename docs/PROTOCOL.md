@@ -26,6 +26,8 @@ Messages exchanged between sidecars and the registry over WebSocket.
 | `ice_candidate` | sidecar ↔ sidecar (via registry) | `{ "candidate": "...", "sdpMid": "...", "sdpMLineIndex": 0 }` |
 | `heartbeat` | sidecar → registry | `{}` |
 
+The registry relays `offer`, `answer` and `ice_candidate` only when both the sender and the `target_id` are approved (pairing) or legacy (API-key) peers; other messages are dropped (ADR-024).
+
 ## 2. DataChannel Protocol (WebRTC)
 
 Messages exchanged directly between agents over WebRTC DataChannels (DTLS encrypted).
@@ -94,27 +96,30 @@ remote=<typ> <addr>:<port>`) when the connection reaches `connected`.
 
 ```
 POST /api/token
-Header: X-API-Key: ak_dev_001
+Header: X-API-Key: ak_dev_001        (or X-Device-Token: dt_... for a paired device)
 → { "token": "jwt...", "peer_id": "agent-001", "role": "agent" }
 ```
+
+Writes below marked *(credential)* need `X-API-Key`, `X-Device-Token` or `X-Admin-Token`; routes marked *(admin)* need `X-Admin-Token` (ADR-024). Unmarked routes are open.
 
 ### Agent Registry
 
 ```
-POST /api/registry/agents          # Register/update agent
-GET  /api/registry/agents          # List all agents
-GET  /api/registry/agents/:id      # Get specific agent
+POST   /api/registry/agents        # Register/update agent (credential)
+GET    /api/registry/agents        # List all agents
+GET    /api/registry/agents/:id    # Get specific agent
+DELETE /api/registry/agents/:id    # Unregister agent (credential)
 GET  /api/registry/route?skill=X   # Find agent by skill
 ```
 
 ### Hub (Tasks)
 
 ```
-POST /api/hub/tasks                # Submit task
+POST /api/hub/tasks                # Submit task (credential)
 GET  /api/hub/tasks/all            # List all tasks
 GET  /api/hub/tasks/:id            # Get task status
-POST /api/hub/tasks/:id            # Update task result
-POST /api/hub/heartbeat            # Agent heartbeat (compat)
+POST /api/hub/tasks/:id            # Update task result (credential)
+POST /api/hub/heartbeat            # Agent heartbeat (compat) (credential)
 ```
 
 ### Monitoring

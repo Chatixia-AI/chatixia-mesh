@@ -7,6 +7,8 @@ from chatixia.core.mesh_skills import (
     handle_delegate,
     handle_mesh_send,
     handle_mesh_broadcast,
+    _auth_headers,
+    _post,
     _registry_url,
 )
 
@@ -19,6 +21,38 @@ class TestRegistryUrl:
     def test_custom_url(self, monkeypatch):
         monkeypatch.setenv("CHATIXIA_REGISTRY_URL", "http://custom:9090")
         assert _registry_url() == "http://custom:9090"
+
+
+class TestAuthHeaders:
+    def test_sends_api_key_when_set(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "ak_test")
+        assert _auth_headers() == {"x-api-key": "ak_test"}
+
+    def test_empty_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("API_KEY", raising=False)
+        assert _auth_headers() == {}
+
+    def test_post_carries_api_key(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "ak_test")
+        seen = {}
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'{"task_id": "t1"}'
+
+        def fake_urlopen(req, timeout=0):
+            seen["key"] = req.get_header("X-api-key")
+            return _Resp()
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        assert _post("http://registry/api/hub/tasks", {}) == {"task_id": "t1"}
+        assert seen["key"] == "ak_test"
 
 
 # ─── Sync handlers (control plane — unchanged) ──────────────────────────

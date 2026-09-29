@@ -52,6 +52,35 @@ docker compose up registry
 
 The registry listens on port 8080 by default.
 
+### Lock down the registry (do this before exposing it)
+
+Set these in the registry's environment (`.env` in the registry's working directory, the shell, or `docker compose`). On the registry host, once:
+
+```bash
+cat >> .env <<EOF
+SIGNALING_SECRET=$(openssl rand -hex 32)
+REGISTRY_ADMIN_TOKEN=$(openssl rand -hex 32)
+REGISTRY_ALLOWED_ORIGINS=
+EOF
+chmod 600 .env
+```
+
+An empty `REGISTRY_ALLOWED_ORIGINS` means no other website may call the registry from a browser.
+
+- **`REGISTRY_ADMIN_TOKEN`** protects pairing approval (`/api/pairing/pending|all|{id}/approve|reject|revoke`) and every hub write. If you leave it unset the registry generates a new token on every start and logs it once, like this:
+
+  ```text
+  WARN [AUTH] REGISTRY_ADMIN_TOKEN is not set. Generated an admin token for this run:
+      adm_3f9c…
+      Hub: http://localhost:8080/#admin_token=adm_3f9c…
+  ```
+
+  That is fine for a quick test; for a registry that stays up, set it so the token survives restarts.
+- **Open the hub** with `https://<registry-url>/#admin_token=<token>` (the hub moves the token into the tab's session storage and removes it from the address bar), or paste it into the **admin token** field in the hub header. Without it the hub still shows agents, tasks and topology but hides the approval queue.
+- **`REGISTRY_ALLOWED_ORIGINS`** is a comma-separated list of browser origins allowed to call the registry cross-origin. The default only covers loopback (`http://localhost:8080`, `http://127.0.0.1:8080`, `http://localhost:5174`, `http://127.0.0.1:5174`). The bundled hub is served by the registry itself, so behind a tunnel it is same-origin and needs no entry. Add an origin only if a web page on another host must call the registry.
+- Agents and sidecars keep using their API keys (`x-api-key`); registration, heartbeats, task updates and deregistration are refused without one.
+- Old entries are evicted automatically (finished tasks after 1 h, silent agents after 1 h, rejected/revoked pairings after 24 h). Tune with `REGISTRY_TASK_RETENTION_SECS`, `REGISTRY_AGENT_EVICTION_SECS`, `REGISTRY_ONBOARDING_RETENTION_SECS`.
+
 ## Step 3: Expose the Registry with Cloudflare Tunnel
 
 ### Install cloudflared
@@ -117,7 +146,9 @@ sudo systemctl enable cloudflared
 sudo systemctl start cloudflared
 ```
 
-Verify: `curl https://mesh.yourdomain.com/api/registry/agents` should return `[]`.
+Verify: `curl https://mesh.yourdomain.com/api/registry/agents` should return `[]`, and `curl -i https://mesh.yourdomain.com/api/pairing/pending` should return `401` (with `-H "x-admin-token: $REGISTRY_ADMIN_TOKEN"` it returns `[]`). A `200` without the token means you are running a registry from before ADR-024.
+
+> **The tunnel URL is public.** Anyone who finds it can reach every registry endpoint. That is why the admin token matters: before ADR-024 the pairing approval endpoints were open, so a stranger could approve their own device. Keep the token out of screenshots and shared logs.
 
 ## Step 4: Set Up TURN Relay (Recommended)
 
@@ -215,7 +246,7 @@ chatixia run
 
 ### chatixia-world across two NATs
 
-For the world (Phase 2, ADR-020) the same shape is scripted end to end: registry plus quick tunnels on the Pi, The-Alpha's world on a laptop elsewhere. See `chatixia-world/docs/CROSS_NAT_RUN.md` and `scripts/cross-nat/` there. The evidence the sidecar prints for it is the `[ICE] <peer> selected pair: local=<typ> … remote=<typ> …` line (`srflx`, `prflx` or `relay` means a real NAT crossing; `host` means same LAN), also carried on the `peer_connected` IPC message.
+For the world (Phase 2, ADR-020) the same shape is scripted end to end: registry plus quick tunnels on the Pi, The-Alpha's world on a laptop elsewhere. See `chatixia-world/docs/CROSS_NAT_RUN.md` and `scripts/cross-nat/` there. The world only uses API keys, so it runs unchanged against a registry with ADR-024. `pi-home.sh` does not set `REGISTRY_ADMIN_TOKEN` or `SIGNALING_SECRET`, so each run gets fresh random values; the admin token is in `state/registry.log` if you want the hub's approval queue. The evidence the sidecar prints for it is the `[ICE] <peer> selected pair: local=<typ> … remote=<typ> …` line (`srflx`, `prflx` or `relay` means a real NAT crossing; `host` means same LAN), also carried on the `peer_connected` IPC message.
 
 ## What Happens Automatically
 
@@ -247,3 +278,6 @@ Enterprise VPNs typically land on Tier 2 (with TURN) or Tier 3 (without). The sy
 | Peers listed but DataChannel fails | UDP blocked, no TURN configured | Set up TURN relay (Step 4) or accept Tier 3 fallback |
 | Tasks work but are slow (3–15s) | Using Tier 3 HTTP fallback | Set up TURN relay for Tier 2 speeds |
 | `cloudflared` URL changes on restart | Using quick tunnel mode | Set up persistent tunnel with a named tunnel + DNS |
+| Agent gets `401` on register/heartbeat | Missing or unknown `x-api-key` | Check `sidecar.api_key` / `API_KEY` matches `api_keys.json` on the registry |
+| Hub shows no approval queue, header asks for a token | Hub tab has no admin token (or the registry restarted with a new generated one) | Paste `REGISTRY_ADMIN_TOKEN` (or the token from the registry log) into the header field |
+| Browser console: CORS error calling the registry | Page origin not in `REGISTRY_ALLOWED_ORIGINS` | Add the exact origin (scheme + host + port), or serve the page from the registry |

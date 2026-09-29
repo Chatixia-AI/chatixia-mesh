@@ -6,6 +6,13 @@ Format: `[YYYY-MM-DD] — Summary of changes`
 
 ---
 
+## [2026-09-29] — Threat modeling case study: closing G1–G3
+
+### Changed
+- **14-threat-modeling.md** — New Section 8, "Found it, fixed it: closing G1–G3": how the registry's admin endpoints, SDP/ICE relay and unbounded maps were secured once chatixia-world put the registry on a public tunnel (ADR-024)
+
+---
+
 ## [2026-03-25] — Initial Release
 
 ### Added

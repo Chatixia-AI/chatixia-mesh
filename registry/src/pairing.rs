@@ -1,7 +1,9 @@
 //! Agent pairing + approval — invite codes, onboarding pipeline, revocation.
 //!
-//! Flow: generate invite code → new agent redeems code → admin approves in hub
-//! → agent gets device token → agent joins mesh with scoped peer visibility.
+//! Flow: generate invite code → new agent redeems code (gets a pairing secret)
+//! → admin approves in hub → agent reads its device token from
+//! `/api/pairing/{id}/status` with the pairing secret → agent joins mesh with
+//! scoped peer visibility.
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -17,6 +19,7 @@ use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+use crate::admin::{self, Caller, RequireAdmin, RequireCaller};
 use crate::AppState;
 
 // ─── Structs ────────────────────────────────────────────────────────────────
@@ -37,6 +40,10 @@ pub struct OnboardingEntry {
     /// Empty until approval, then "dt_" + 32 hex.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub device_token: String,
+    /// Returned once by `/pair`; the device presents it to `/status` to fetch
+    /// its device token. Never serialized in listings.
+    #[serde(skip)]
+    pub pairing_secret: String,
     /// "pending_approval" | "approved" | "rejected" | "revoked"
     pub status: String,
     pub created_at: f64,
@@ -64,6 +71,8 @@ pub struct PairingState {
 const CODE_TTL_SECS: u64 = 300;
 const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 const RATE_LIMIT_MAX_ATTEMPTS: usize = 5;
+/// How long rejected/revoked onboarding entries are kept before eviction (G3).
+pub const DEFAULT_ONBOARDING_RETENTION_SECS: u64 = 86_400;
 
 impl PairingState {
     pub fn new() -> Self {
@@ -111,6 +120,7 @@ impl PairingState {
             agent_name: agent_name.to_string(),
             peer_id,
             device_token: String::new(),
+            pairing_secret: admin::generate_secret("ps_"),
             status: "pending_approval".into(),
             created_at: now,
             updated_at: now,
@@ -158,9 +168,15 @@ impl PairingState {
 
     /// Validate a device token — returns entry if approved and not revoked.
     pub fn validate_device_token(&self, token: &str) -> Option<OnboardingEntry> {
+        if token.is_empty() {
+            return None;
+        }
         self.onboarding
             .iter()
-            .find(|e| e.value().device_token == token && e.value().status == "approved")
+            .find(|e| {
+                e.value().status == "approved"
+                    && crate::admin::constant_time_eq(&e.value().device_token, token)
+            })
             .map(|e| e.value().clone())
     }
 
@@ -186,23 +202,55 @@ impl PairingState {
         true
     }
 
-    /// Background cleanup: expired codes and stale rate-limit entries.
-    pub async fn cleanup_loop(&self) {
+    /// Background cleanup: expired codes, stale rate-limit entries, and old
+    /// rejected/revoked onboarding entries.
+    pub async fn cleanup_loop(&self, retention: Duration) {
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
-
-            // Remove expired / used codes
-            let before = self.codes.len();
-            self.codes
-                .retain(|_, ic| !ic.used && ic.created_at.elapsed().as_secs() < CODE_TTL_SECS);
-            let removed = before - self.codes.len();
-            if removed > 0 {
-                info!("[PAIRING] cleaned up {} expired invite codes", removed);
-            }
-
-            // Prune empty rate-limit buckets
-            self.rate_limits.retain(|_, v| !v.is_empty());
+            self.sweep(epoch_now(), retention);
         }
+    }
+
+    /// One cleanup pass. Returns the number of onboarding entries removed.
+    fn sweep(&self, now: f64, retention: Duration) -> usize {
+        // Remove expired / used codes
+        let before = self.codes.len();
+        self.codes
+            .retain(|_, ic| !ic.used && ic.created_at.elapsed().as_secs() < CODE_TTL_SECS);
+        let removed = before - self.codes.len();
+        if removed > 0 {
+            info!("[PAIRING] cleaned up {} expired invite codes", removed);
+        }
+
+        // Drop attempts outside the window, then empty buckets
+        let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
+        self.rate_limits.retain(|_, v| {
+            v.retain(|t| t.elapsed() < window);
+            !v.is_empty()
+        });
+
+        // Evict rejected/revoked entries past the retention window (G3)
+        let before = self.onboarding.len();
+        let retention = retention.as_secs_f64();
+        self.onboarding.retain(|_, e| {
+            let terminal = e.status == "rejected" || e.status == "revoked";
+            !(terminal && now - e.updated_at > retention)
+        });
+        let evicted = before.saturating_sub(self.onboarding.len());
+        if evicted > 0 {
+            info!(
+                "[PAIRING] evicted {} rejected/revoked onboarding entries",
+                evicted
+            );
+        }
+        evicted
+    }
+
+    /// Look up an entry by id if `secret` matches its pairing secret.
+    fn status_for(&self, id: &str, secret: &str) -> Option<OnboardingEntry> {
+        let entry = self.onboarding.get(id)?;
+        let ok = !secret.is_empty() && admin::constant_time_eq(secret, &entry.pairing_secret);
+        ok.then(|| entry.value().clone())
     }
 
     fn list_pending(&self) -> Vec<OnboardingEntry> {
@@ -256,23 +304,19 @@ fn epoch_now() -> f64 {
 // ─── HTTP Handlers ──────────────────────────────────────────────────────────
 
 /// POST /api/pairing/generate-code — generate a 6-digit invite code.
-/// Requires X-API-Key header (caller must be an existing mesh member).
+/// Requires the admin token or an X-API-Key of an existing mesh member.
 pub async fn generate_code_handler(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    RequireCaller(caller): RequireCaller,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    // Verify caller is an authenticated mesh member
-    let api_key = headers
-        .get("x-api-key")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let created_by = match caller {
+        Caller::Admin => "admin".to_string(),
+        Caller::ApiKey(peer_id) => peer_id,
+        // Paired devices cannot invite further devices.
+        Caller::Device(_) => return Err(StatusCode::FORBIDDEN),
+    };
 
-    let entry = state
-        .auth
-        .lookup_api_key(api_key)
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let code = state.pairing.generate_code(&entry.peer_id);
+    let code = state.pairing.generate_code(&created_by);
 
     Ok(Json(serde_json::json!({
         "code": code,
@@ -342,23 +386,60 @@ pub async fn pair_handler(
         "id": entry.id,
         "status": entry.status,
         "peer_id": entry.peer_id,
+        "pairing_secret": entry.pairing_secret,
     }))
     .into_response()
 }
 
-/// GET /api/pairing/pending — list agents awaiting approval.
-pub async fn list_pending_handler(State(state): State<AppState>) -> Json<Vec<OnboardingEntry>> {
+/// GET /api/pairing/{id}/status — the pairing device polls its own entry.
+/// Requires the `x-pairing-secret` returned by `/pair`; once approved, the
+/// response carries the device token.
+pub async fn status_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let secret = headers
+        .get("x-pairing-secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    match state.pairing.status_for(&id, secret) {
+        Some(entry) => Json(serde_json::json!({
+            "id": entry.id,
+            "status": entry.status,
+            "peer_id": entry.peer_id,
+            "device_token": (entry.status == "approved").then_some(entry.device_token),
+        }))
+        .into_response(),
+        // Same answer for "no such id" and "wrong secret"
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "not found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/pairing/pending — list agents awaiting approval. Admin only.
+pub async fn list_pending_handler(
+    State(state): State<AppState>,
+    _admin: RequireAdmin,
+) -> Json<Vec<OnboardingEntry>> {
     Json(state.pairing.list_pending())
 }
 
-/// GET /api/pairing/all — list all onboarding entries.
-pub async fn list_all_handler(State(state): State<AppState>) -> Json<Vec<OnboardingEntry>> {
+/// GET /api/pairing/all — list all onboarding entries (includes device tokens). Admin only.
+pub async fn list_all_handler(
+    State(state): State<AppState>,
+    _admin: RequireAdmin,
+) -> Json<Vec<OnboardingEntry>> {
     Json(state.pairing.list_all())
 }
 
-/// POST /api/pairing/{id}/approve — approve a pending agent.
+/// POST /api/pairing/{id}/approve — approve a pending agent. Admin only.
 pub async fn approve_handler(
     State(state): State<AppState>,
+    _admin: RequireAdmin,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match state.pairing.approve(&id) {
@@ -383,9 +464,10 @@ pub async fn approve_handler(
     }
 }
 
-/// POST /api/pairing/{id}/reject — reject a pending agent.
+/// POST /api/pairing/{id}/reject — reject a pending agent. Admin only.
 pub async fn reject_handler(
     State(state): State<AppState>,
+    _admin: RequireAdmin,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match state.pairing.reject(&id) {
@@ -401,9 +483,10 @@ pub async fn reject_handler(
     }
 }
 
-/// POST /api/pairing/{id}/revoke — revoke an approved agent.
+/// POST /api/pairing/{id}/revoke — revoke an approved agent. Admin only.
 pub async fn revoke_handler(
     State(state): State<AppState>,
+    _admin: RequireAdmin,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     match state.pairing.revoke(&id) {
@@ -573,6 +656,63 @@ mod tests {
         assert!(pid.starts_with("agent-"));
         assert_eq!(pid.len(), 12); // "agent-" + 6 hex
         assert!(pid[6..].chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_sweep_evicts_old_rejected_and_revoked_only() {
+        let state = PairingState::new();
+        let rejected = state.create_pending("r");
+        state.reject(&rejected.id).unwrap();
+        let revoked = state.create_pending("v");
+        state.approve(&revoked.id).unwrap();
+        state.revoke(&revoked.id).unwrap();
+        let approved = state.create_pending("a");
+        state.approve(&approved.id).unwrap();
+        let pending = state.create_pending("p");
+        let retention = Duration::from_secs(3600);
+
+        // Inside the window nothing goes
+        assert_eq!(state.sweep(epoch_now(), retention), 0);
+        assert_eq!(state.list_all().len(), 4);
+
+        // Past it only the terminal entries go
+        assert_eq!(state.sweep(epoch_now() + 3601.0, retention), 2);
+        assert!(state.onboarding.get(&rejected.id).is_none());
+        assert!(state.onboarding.get(&revoked.id).is_none());
+        assert!(state.onboarding.get(&approved.id).is_some());
+        assert!(state.onboarding.get(&pending.id).is_some());
+    }
+
+    #[test]
+    fn test_sweep_prunes_stale_rate_limit_buckets() {
+        let state = PairingState::new();
+        let old = Instant::now() - Duration::from_secs(RATE_LIMIT_WINDOW_SECS + 1);
+        state.rate_limits.insert("10.0.0.9".into(), vec![old]);
+        state.check_rate_limit("10.0.0.10");
+        state.sweep(epoch_now(), Duration::from_secs(3600));
+        assert!(state.rate_limits.get("10.0.0.9").is_none());
+        assert!(state.rate_limits.get("10.0.0.10").is_some());
+    }
+
+    #[test]
+    fn test_status_requires_pairing_secret() {
+        let state = PairingState::new();
+        let entry = state.create_pending("dev");
+        assert!(entry.pairing_secret.starts_with("ps_"));
+        assert!(state.status_for(&entry.id, "ps_wrong").is_none());
+        assert!(state.status_for(&entry.id, "").is_none());
+        assert!(state.status_for("nope", &entry.pairing_secret).is_none());
+        let got = state.status_for(&entry.id, &entry.pairing_secret).unwrap();
+        assert_eq!(got.status, "pending_approval");
+    }
+
+    #[test]
+    fn test_pairing_secret_not_serialized() {
+        let state = PairingState::new();
+        let entry = state.create_pending("dev");
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(!json.contains("pairing_secret"));
+        assert!(!json.contains(&entry.pairing_secret));
     }
 
     #[test]

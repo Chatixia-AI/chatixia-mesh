@@ -41,4 +41,6 @@
 | **Graceful Degradation** | The system's three-tier fallback strategy: P2P DataChannel (fastest) → TURN relay (slower, still encrypted) → HTTP task queue via registry (slowest, always works). |
 | **chatixia-world** | The product: a creature world (sibling repo `chatixia-world`) whose creatures ("chatixias") run on one or many machines. chatixia-mesh is its transport layer. See ADR-020. |
 | **Substrate / Nervous System** | The role chatixia-mesh plays for chatixia-world since 2026-04-10: the Rust sidecar + registry that carry creature-to-creature traffic across machines. Infrastructure, not a product; its backlog is driven by chatixia-world's needs. |
-
+| **Admin Token** | The registry's single operator credential (`REGISTRY_ADMIN_TOKEN`, sent as `x-admin-token`). Required for pairing approval and accepted for every write. Generated and logged once at startup when unset. See ADR-024. |
+| **Pairing Secret** | A 256-bit value (`ps_` + 64 hex) returned only to the device that redeemed an invite code. The device presents it to `GET /api/pairing/{id}/status` to collect its device token after approval. |
+| **Caller Credential** | Any of the admin token, a known API key, or an approved device token. Required by registry routes that change state (registration, heartbeat, tasks, deregistration). |

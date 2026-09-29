@@ -9,6 +9,7 @@
 - `docs/WEBRTC_VS_ALTERNATIVES.md` (Section 5.10) -- WebRTC security audit surface area
 - `registry/src/auth.rs` -- JWT issuance, API key lookup, TURN credential generation
 - `registry/src/pairing.rs` -- Invite code lifecycle, rate limiting, device token generation
+- `registry/src/admin.rs` -- Admin token, request guards, CORS allowlist (Section 8)
 
 ---
 
@@ -26,7 +27,7 @@ This lesson walks through threat modeling as applied to chatixia-mesh. You will 
 
 Security added after the fact is expensive and incomplete. When you design a REST endpoint, you choose a URL, a method, a request body format, and a response shape. If you do not also choose an authentication scheme, an authorization policy, and an input validation strategy at the same time, those decisions get deferred -- and deferred decisions become unprotected endpoints.
 
-chatixia-mesh has several endpoints that were built without authentication and are now listed as open threats in the threat model (T8, T9). These are not bugs -- they are design decisions that were never made.
+chatixia-mesh had several endpoints that were built without authentication and were listed as open threats in the threat model (T8, T9). These were not bugs -- they were design decisions that were never made. Section 8 shows what it took to make them.
 
 ### Structured thinking about what can go wrong
 
@@ -569,6 +570,106 @@ When you add a feature, add its threats. When you change a protocol, re-examine 
 
 ---
 
+## 8. Found it, fixed it: closing G1–G3
+
+A threat model earns its keep the day someone acts on it. On 2026-04-10 the threat model recorded three "known open gaps" and ADR-020 decided to leave them open until chatixia-world needed them closed. On 2026-09-29 it did: the cross-NAT run put the registry on a Raspberry Pi behind a public Cloudflare Tunnel. This section walks through each gap the way you would in a design review -- the finding, why it mattered now, the fix, and what the fix deliberately does not do. The decision is ADR-024.
+
+### What changed the risk
+
+Nothing in the code changed between April and September. The **deployment** changed. A registry on a home LAN is reachable by a handful of devices you own. A registry behind a tunnel URL is reachable by anyone who learns the URL -- from a screenshot, a shell history, a log paste. The threat model's boundary diagram had the registry at "Internet / LAN" all along; the tunnel moved it firmly to the "Internet" side.
+
+This is Step 6 of the process in Section 7 ("update when the system changes") in practice: re-read the gaps whenever the trust boundary moves, not only when the code does.
+
+### G1 -- the admin endpoints anyone could call
+
+**Finding.** `POST /api/pairing/{id}/approve` had no authentication, and the router used `CorsLayer::permissive()`. `GET /api/pairing/all` returned every onboarding entry, device tokens included.
+
+**Why it mattered.** Walk the attack with STRIDE's **E**levation of privilege: redeem an invite code (or wait for someone else to), call `approve` on your own entry, read your device token from `/all`, exchange it for a JWT. The admin approval step, the core of the pairing design (ADR-009), was one unauthenticated POST away. Permissive CORS made it worse: any web page could trigger the calls from a visitor's browser.
+
+**Fix.** Three pieces:
+
+1. **An admin credential.** The pairing admin routes need an `x-admin-token` header. The token comes from `REGISTRY_ADMIN_TOKEN`; the check is an axum extractor, so a handler cannot forget it -- the guard is in its signature:
+
+   ```rust
+   pub async fn approve_handler(
+       State(state): State<AppState>,
+       _admin: RequireAdmin,          // 401 unless x-admin-token matches
+       Path(id): Path<String>,
+   ) -> impl IntoResponse { /* ... */ }
+   ```
+
+   The comparison is constant-time (`subtle::ConstantTimeEq`), so response timing does not leak how many leading characters of a guess were right.
+
+2. **Secure by default.** Section 6 showed the cost of defaults like `dev-secret-change-me`: everyone who has read the repository knows them. So an unset `REGISTRY_ADMIN_TOKEN` does not mean "open". The registry generates a 256-bit token at startup and logs it once, with a hub link that carries it in the URL fragment -- the pattern Jupyter uses. The same reasoning retired the public JWT secret: with `SIGNALING_SECRET` unset, the registry now signs with a random per-run secret.
+
+3. **An origin allowlist.** `CorsLayer::permissive()` became a list from `REGISTRY_ALLOWED_ORIGINS`. The bundled hub is served by the registry itself (same origin), so it needs no entry at all.
+
+Every other write -- registration, heartbeat, deregistration (T8), task submission -- now needs *some* credential: the admin token, an API key, or a device token. Agents already sent `x-api-key` on those calls, so they kept working.
+
+The fix also exposed a dependency: the new device used to collect its device token from the open `/all` listing. Closing the listing would have broken pairing. So `/pair` now returns a one-time **pairing secret**, and the device polls `GET /api/pairing/{id}/status` with it. A good fix removes the insecure path *and* provides the legitimate one.
+
+### G2 -- a gate on the front door but not the side door
+
+**Finding.** The registry answered `register` with a peer list filtered to approved peers. But `offer`, `answer` and `ice_candidate` were relayed to any target, so a pending (unapproved) peer that knew a peer id could still start a WebRTC handshake.
+
+**Why it mattered.** This is **S**poofing and **T**ampering on the signaling path (T1, T3). ADR-009 promised that "pending agents can't see or communicate with mesh peers"; the first half was true, the second was not. Filtering *discovery* is not *authorization*.
+
+**Fix.** The relay applies the same check as `register` to both ends:
+
+```rust
+"offer" | "answer" | "ice_candidate" => {
+    if let Some(target_id) = &msg.target_id {
+        if !is_authorized(&msg.peer_id) || !is_authorized(target_id) {
+            warn!("[SIG] dropped {} from {} → {}", msg.msg_type, msg.peer_id, target_id);
+            return;
+        }
+        // ... relay as before ...
+    }
+}
+```
+
+One predicate, used at every door. When you find a check on one code path, look for its siblings.
+
+### G3 -- a slow denial of service
+
+**Finding.** Three background loops marked things as dead but never removed them: failed tasks, offline agents, rejected or revoked pairings. (A fourth leak turned up while fixing it: rate-limit buckets were only emptied when the same IP came back.)
+
+**Why it mattered.** **D**enial of service does not need a flood. A registry that runs for months on a Pi with a small amount of RAM grows until it stops. Every map without an eviction rule is a slow memory leak.
+
+**Fix.** Each loop gained a retention window and a single `retain` pass:
+
+```rust
+self.tasks.retain(|_, task| {
+    let finished = task.state == "completed" || task.state == "failed";
+    if !finished && now - task.created_at > task.ttl as f64 {
+        task.state = "failed".into();       // expire, as before
+        task.error = "TTL expired".into();
+        task.updated_at = now;
+        return true;                         // keep it visible for a while
+    }
+    !(finished && now - task.updated_at > retention)  // evict when old enough
+});
+```
+
+The windows (1 h for tasks and agents, 24 h for rejected/revoked pairings) are env-configurable. Note what the sweep takes as input: `now` is a parameter, not read inside. That makes eviction testable without sleeping -- a test calls `sweep(now + 3601.0, retention)` and checks the entry is gone.
+
+### What the fix does not do
+
+Update the residual-risk column honestly, or the threat model starts lying in the other direction:
+
+| Still open | Why it was left |
+|------------|-----------------|
+| GET endpoints (agents, tasks with payloads, topology) are unauthenticated (T9) | The dashboard and agents read them; gating reads is a larger change than the tunnel risk required |
+| No rate limiting on most endpoints (T4) | Eviction bounds memory over time, not request rate |
+| Any mesh member can deregister any agent (T8) | The registry cannot yet bind an `agent_id` to a credential |
+| One shared admin token, no per-user audit trail | Enough for a single keeper; not enough for a team |
+
+### The process, end to end
+
+Notice the order of the work: the threat model named the gaps, an ADR recorded when they would be fixed (ADR-020) and then how (ADR-024), tests pin each mitigation (a 401 without the token, no relay from an unapproved peer, eviction after the window), and the threat model rows were marked mitigated with a date -- not deleted. Keeping the history is what lets a reader see that the registry was open from April to September, and why.
+
+---
+
 ## Exercises
 
 ### Exercise 1: Apply STRIDE to a system you know
@@ -586,7 +687,7 @@ Write a one-paragraph threat description for each, following the format: **Attac
 
 ### Exercise 2: Write a threat description for unauthenticated DELETE
 
-The chatixia-mesh registry exposes `DELETE /api/registry/agents/{agent_id}` without authentication (threat T8 in the threat model). Write a complete threat description covering:
+Until ADR-024 the chatixia-mesh registry exposed `DELETE /api/registry/agents/{agent_id}` without authentication (threat T8 in the threat model). It now requires a credential, but any mesh member can still deregister any agent. Write a complete threat description for the original, unauthenticated endpoint, then check your mitigation against what Section 8 shipped:
 
 1. **Attack scenario:** How does the attacker discover the agent_id? What request do they send? What tools do they use?
 2. **Impact:** What happens to the targeted agent? What happens to tasks assigned to it? How long is it invisible? What is the blast radius if multiple agents are deregistered simultaneously?
