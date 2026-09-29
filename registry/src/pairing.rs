@@ -168,9 +168,15 @@ impl PairingState {
 
     /// Validate a device token — returns entry if approved and not revoked.
     pub fn validate_device_token(&self, token: &str) -> Option<OnboardingEntry> {
+        if token.is_empty() {
+            return None;
+        }
         self.onboarding
             .iter()
-            .find(|e| e.value().device_token == token && e.value().status == "approved")
+            .find(|e| {
+                e.value().status == "approved"
+                    && crate::admin::constant_time_eq(&e.value().device_token, token)
+            })
             .map(|e| e.value().clone())
     }
 
