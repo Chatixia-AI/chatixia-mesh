@@ -21,7 +21,7 @@ jobs:
     name: Rust Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -35,7 +35,7 @@ jobs:
     name: Rust Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v7
@@ -67,7 +67,7 @@ jobs:
         run: uvx pytest@9.1.1 tests/integration -v --durations=0
       - name: Upload process logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-logs
           path: itest-logs/
@@ -81,7 +81,7 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: ruff check
         run: uvx ruff@0.15.0 check .
@@ -95,7 +95,7 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Install dependencies
         run: uv sync --all-groups
@@ -110,11 +110,11 @@ jobs:
       run:
         working-directory: hub
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -132,7 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check version bump when agent/ changed
@@ -164,10 +164,10 @@ jobs:
       matrix:
         target: [registry, sidecar, agent]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build ${{ matrix.target }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.target }}/Dockerfile
@@ -192,7 +192,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -207,13 +207,13 @@ jobs:
           cp target/release/chatixia-sidecar target/release/chatixia-registry "dist/$NAME/"
           (cd "dist/$NAME" && sha256sum chatixia-sidecar chatixia-registry > sha256sums.txt && cat sha256sums.txt)
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: chatixia-mesh-${{ matrix.target }}
           path: dist/chatixia-mesh-${{ matrix.target }}/
           if-no-files-found: error
       - name: Attach to GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/chatixia-mesh-${{ matrix.target }}.tar.gz
