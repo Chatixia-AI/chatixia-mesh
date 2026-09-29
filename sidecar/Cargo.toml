@@ -21,6 +21,6 @@ reqwest = { version = "0.13", features = ["json"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 hmac = "0.13"
 sha1 = "0.11"
-base64 = "0.22"
+base64 = "0.23"
 futures-util = "0.3"
 dashmap = "6"
