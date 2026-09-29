@@ -29,11 +29,14 @@ Curated resources for deepening your understanding of the topics covered in this
 
 **RFCs:**
 
-- [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445) -- ICE: Interactive Connectivity Establishment. The full specification for how peers discover connectivity paths. *(Lesson 02)*
+- [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445) -- ICE: Interactive Connectivity Establishment. The full specification for how peers discover connectivity paths. *(Lessons 02, 18)*
 - [RFC 5389](https://datatracker.ietf.org/doc/html/rfc5389) -- STUN: Session Traversal Utilities for NAT. How peers discover their public IP addresses. *(Lesson 02)*
 - [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) -- TURN: Traversal Using Relays around NAT. The relay fallback when direct connectivity fails. *(Lesson 02)*
 - [RFC 8261](https://datatracker.ietf.org/doc/html/rfc8261) -- SCTP over DTLS over UDP. The transport layer beneath DataChannels. *(Lesson 03)*
 - [RFC 4566](https://datatracker.ietf.org/doc/html/rfc4566) -- SDP: Session Description Protocol. The format for WebRTC offer/answer exchange. *(Lesson 03)*
+- [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) -- Trickle ICE: Incremental Provisioning of Candidates. Why candidates travel separately from the offer and answer, and can overtake them. *(Lessons 03, 18)*
+- [RFC 7675](https://datatracker.ietf.org/doc/html/rfc7675) -- STUN Usage for Consent Freshness. The liveness rule that fails a connection whose path has died, even while signaling is up. *(Lesson 18)*
+- [RFC 9429](https://datatracker.ietf.org/doc/html/rfc9429) -- JSEP: JavaScript Session Establishment Protocol. The signaling state machine, offer/answer rules, and rollback. *(Lessons 03, 18)*
 
 **Projects:**
 
@@ -46,6 +49,8 @@ Curated resources for deepening your understanding of the topics covered in this
 - [webrtc.org](https://webrtc.org/) -- Official WebRTC project site with guides and API documentation. *(Lesson 03)*
 - [MDN WebRTC API](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API) -- Mozilla's reference documentation for the browser WebRTC API. *(Lesson 03)*
 - [WebRTC for the Curious](https://webrtcforthecurious.com/) -- Free online book explaining WebRTC protocols from the ground up. Written by Pion contributors. *(Lessons 02, 03)*
+- [MDN: The WebRTC perfect negotiation pattern](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation) -- Polite and impolite peers, and handling offer collisions without deadlock. The browser-side counterpart of the sidecar's glare tie-break. *(Lesson 18)*
+- [Perfect negotiation in WebRTC](https://blog.mozilla.org/webrtc/perfect-negotiation-in-webrtc/) -- Jan-Ivar Bruaroey's Mozilla blog post introducing the pattern. *(Lesson 18)*
 
 ---
 

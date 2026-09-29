@@ -100,6 +100,10 @@ The system's three-tier fallback strategy: P2P DataChannel (fastest) -> TURN rel
 
 ## H
 
+**Hairpinning**
+Also called NAT loopback. A packet sent from inside a NAT to the NAT's own public address, expecting the router to send it back inside. Many consumer routers do not support it, so two peers on the same LAN cannot always connect using only server-reflexive candidates. In Lesson 18, losing the host candidate left only such a candidate, and ICE timed out.
+*First introduced: Lesson 18*
+
 **Health**
 Agent status derived from heartbeat recency: `active` (<90s since last heartbeat), `stale` (90-270s), `offline` (>270s). Computed by the registry's `health_check_loop` background task.
 *First introduced: Lesson 09*
@@ -129,6 +133,18 @@ Interactive Connectivity Establishment -- discovers the best network path betwee
 **ICE Candidate**
 A potential network address (host, server-reflexive, or relay) that a peer can be reached at. Host candidates are local IPs; server-reflexive candidates are public IPs discovered via STUN; relay candidates route through TURN.
 *First introduced: Lesson 02*
+
+**ICE Candidate Buffering**
+Holding remote ICE candidates that arrive before their connection can accept them (no connection yet, or no remote description), then applying them once the remote description is set. The sidecar keeps them in `MeshManager::pending_candidates` and flushes them in `handle_offer`, in the `answer` handler, and right after queuing. Introduced by ADR-021.
+*First introduced: Lesson 18*
+
+**ICE Consent Freshness**
+The rule (RFC 7675) that an ICE agent must keep confirming, with periodic STUN binding requests, that the remote peer still agrees to receive traffic, and stop sending if it does not. In webrtc-ice 0.17 the defaults are a 2 s keepalive, `Disconnected` after 5 s of silence, and `Failed` after 30 s. A consent timeout can fail a peer connection while the signaling WebSocket stays up, which is what the sidecar's re-dial path handles.
+*First introduced: Lesson 18*
+
+**Identity-Checked Removal**
+Removing an entry from a shared map only if it is still the exact object the caller holds, not just an entry with the same key. The sidecar's `MeshManager::remove_peer_if_pc` and `remove_peer_if_channel` compare pointers, so a connection replaced during offer glare cannot remove its replacement when its late `Closed` callback fires. See also: Stale Callback.
+*First introduced: Lesson 18*
 
 **IPC**
 Inter-Process Communication -- the JSON-line protocol over Unix domain socket between a sidecar and its Python agent. Each message is a single JSON object terminated by a newline.
@@ -174,6 +190,10 @@ Network Address Translation -- maps private IPs to public IPs. Prevents direct i
 
 ## O
 
+**Offer Glare**
+Also called an offer collision. Both peers send an SDP offer for the same connection at the same time, so each receives an offer while in the `have-local-offer` signaling state. Without a rule for which offer wins, the peers can deadlock or build duplicate connections. The sidecar resolves it deterministically: the lower `peer_id` keeps its offer and the higher one yields (ADR-021). The check only works if the sidecar's own offer is already in `have-local-offer` when the other offer is read, so the signaling loop awaits each offer and answer before reading the next message (ADR-025).
+*First introduced: Lesson 18*
+
 **OIDC Trusted Publisher**
 An OpenID Connect-based mechanism where a package registry (like PyPI) trusts a specific CI/CD workflow to publish packages without static API tokens. chatixia-mesh uses OIDC trusted publisher for GitHub Actions to publish the `chatixia` Python package to PyPI on release.
 *First introduced: Lesson 15*
@@ -187,6 +207,14 @@ A sidecar identified by its `peer_id`. Peers communicate via WebRTC DataChannels
 **Peer ID**
 Unique identifier assigned to a sidecar, derived from its API key entry (e.g., `agent-001`). The peer ID is the `sub` claim in the sidecar's JWT.
 *First introduced: Lesson 08*
+
+**Perfect Negotiation**
+The WebRTC pattern (documented by MDN and Mozilla) for handling offer glare without deadlock. One peer is polite and the other impolite, and the roles are decided ahead of time. The sidecar uses the same idea, with the roles picked by comparing `peer_id`s. It yields by closing the pending connection and building a new one instead of rolling back.
+*First introduced: Lesson 18*
+
+**Polite Peer / Impolite Peer**
+The two roles in perfect negotiation. When offers collide, the polite peer drops its own offer and answers the incoming one, and the impolite peer ignores the incoming offer and keeps its own. In chatixia-mesh, the higher `peer_id` is polite and the lower one is impolite (`glare_keep_local_offer` in `sidecar/src/signaling.rs`).
+*First introduced: Lesson 18*
 
 **Preemptive Multitasking**
 A concurrency model where the scheduler can interrupt a running task at any time to give CPU time to another task. Used by operating systems for process scheduling and by multi-threaded runtimes. Contrast with cooperative multitasking, where tasks must explicitly yield.
@@ -215,6 +243,10 @@ A UDP-based transport protocol developed by Google/IETF. Provides multiplexed st
 **Reactor Pattern**
 A design pattern for handling concurrent I/O by demultiplexing incoming events from multiple sources into a single event loop, then dispatching each event to the appropriate handler. The foundation of async runtimes like tokio (Rust) and asyncio (Python). The reactor waits for I/O readiness rather than blocking on individual operations.
 *First introduced: Lesson 04*
+
+**Re-dial**
+The sidecar's recovery path for a peer connection that reaches `Failed` or `Disconnected` while signaling is still up. After `REDIAL_DELAY` (3 s), if the peer is still not connected, the sidecar sends a fresh `register` over the live signaling channel. The registry answers with a `peer_list`, which runs the normal offer path and the glare tie-break (ADR-022).
+*First introduced: Lesson 18*
 
 **Registry**
 Central Rust server (port 8080) that provides signaling relay, agent discovery, task queue, and hub API. The registry is the control plane -- it coordinates connections but does not carry agent-to-agent data.
@@ -250,6 +282,10 @@ An architectural pattern where a helper process runs alongside a primary applica
 The process of exchanging SDP offers/answers and ICE candidates between peers via the registry WebSocket to establish WebRTC connections. Signaling is a control-plane operation -- once the connection is established, signaling is no longer needed for data exchange.
 *First introduced: Lesson 05*
 
+**Signaling State**
+Where a peer connection is in the SDP offer/answer exchange, as defined by JSEP: `stable`, `have-local-offer`, `have-remote-offer` (plus provisional-answer states the sidecar does not use). Only a connection in `have-local-offer` can accept a remote answer. The sidecar reads it via `RTCPeerConnection::signaling_state()` to detect offer glare.
+*First introduced: Lesson 18*
+
 **Skill**
 A named capability (Python function) that an agent can execute. Skills are registered with the registry and used for task routing. Built-in skills include `delegate`, `mesh_send`, `mesh_broadcast`, `list_agents`, `find_agent`, and `user_intervention`.
 *First introduced: Lesson 09*
@@ -257,6 +293,10 @@ A named capability (Python function) that an agent can execute. Skills are regis
 **Skill Handler**
 A Python function (sync or async) that implements a specific skill. Skill handlers are registered in the `SKILL_HANDLERS` dictionary and invoked when the agent receives a matching task -- either from the hub queue via heartbeat or from a direct P2P `task_request`.
 *First introduced: Lesson 09*
+
+**Stale Callback**
+A long-lived callback that acts on a name (such as a `peer_id`) after that name has been rebound to a newer object, and so damages the newer one. It is the reason the sidecar uses identity-checked removal. See also: Identity-Checked Removal.
+*First introduced: Lesson 18*
 
 **State Machine**
 A model where a system exists in one of a finite set of states and transitions between them based on events. In chatixia-mesh, tasks follow a state machine: `pending` -> `assigned` -> `completed` or `failed`. Agent health follows another: `active` -> `stale` -> `offline`.
@@ -287,6 +327,10 @@ The iterative cycle where an LLM generates a tool call, the agent executes it, r
 **Topology**
 The mesh network graph -- which agents are online and which DataChannel connections exist between them. Exposed via the `/api/hub/network/topology` endpoint and visualized in the hub dashboard.
 *First introduced: Lesson 13*
+
+**Trickle ICE**
+Sending ICE candidates to the remote peer one by one as they are discovered (RFC 8838), instead of waiting for gathering to finish and putting them all in the SDP. It speeds up setup, but candidates can arrive before the remote description they depend on, which is why the sidecar buffers early candidates.
+*First introduced: Lesson 03 (failure mode in Lesson 18)*
 
 **TTL**
 Time To Live -- maximum seconds a task can remain pending/assigned before the registry's `expire_tasks_loop` marks it as failed. Default: 300 seconds.

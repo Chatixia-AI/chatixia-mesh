@@ -12,7 +12,7 @@
 
 chatixia-mesh is a real, running agent-to-agent network built on WebRTC, taken apart in the open so you can learn how it works. Agents find each other through a registry, then talk directly over DTLS-encrypted peer-to-peer channels; the registry handles signaling only and never touches their messages.
 
-Every part of it is written down: an 18-lesson course that walks through the system from first principles, 23 architecture decision records, and a threat model that lists what is still open.
+Every part of it is written down: an 18-lesson course that walks through the system from first principles, 25 architecture decision records, and a threat model that lists what is still open.
 
 <p align="center">
   <a href="https://blog.chatixia.net?utm_source=github&utm_medium=readme"><b>Start the course</b></a> ·
@@ -25,7 +25,7 @@ Every part of it is written down: an 18-lesson course that walks through the sys
 
 ## What this is, and what it isn't
 
-- **A reference system to learn from.** About 6,000 lines of Rust and Python, small enough to read end to end, and the [course](https://blog.chatixia.net) (sources in [`learnings/`](learnings/)) teaches distributed systems through it: peer-to-peer networking, WebRTC, signaling, IPC, the sidecar pattern, threat modeling, deployment and testing.
+- **A reference system to learn from.** About 7,000 lines of Rust and Python, small enough to read end to end, and the [course](https://blog.chatixia.net) (sources in [`learnings/`](learnings/)) teaches distributed systems through it: peer-to-peer networking, WebRTC, signaling, IPC, the sidecar pattern, threat modeling, deployment and testing.
 - **The transport layer for chatixia-world**, Chatixia's creature world: the Rust sidecar and registry carry creature-to-creature traffic between machines. Since 2026-09-22 two world instances hold live conversations over sidecar DataChannels (ADR-021). What the world needs next is what gets built here (ADR-020).
 - **Not a product, and not hardened for production.** There is no roadmap. The [threat model](docs/THREAT_MODEL.md#known-gaps) lists what is and is not covered: the registry now requires an admin token for pairing approval and a credential for every write (ADR-024), but read endpoints are open, there is no rate limiting and no native TLS. Run it on networks you trust, or treat it as a starting point.
 

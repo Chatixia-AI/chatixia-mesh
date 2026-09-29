@@ -26,6 +26,7 @@ All materials live in `learnings/`.
 | 15 | Deployment Patterns | done | `learnings/15-deployment-patterns.md` |
 | 16 | Architecture Decision Records | done | `learnings/16-architecture-decision-records.md` |
 | 17 | Testing Distributed Systems | done | `learnings/17-testing-distributed-systems.md` |
+| 18 | When Handshakes Fail | done | `learnings/18-when-handshakes-fail.md` |
 | — | Glossary | done | `learnings/glossary.md` |
 | — | Reading List | done | `learnings/reading-list.md` |
 | — | Diagrams | done | `learnings/diagrams/` |
@@ -36,4 +37,4 @@ All materials live in `learnings/`.
 - **Tier 1 — Foundations** (Lessons 01-04): No prerequisites. Core concepts.
 - **Tier 2 — Core Mechanics** (Lessons 05-09): How the system works.
 - **Tier 3 — System Design** (Lessons 10-14): Architectural patterns and trade-offs.
-- **Tier 4 — Operations** (Lessons 15-17): Deployment, decisions, testing.
+- **Tier 4 — Operations** (Lessons 15-18): Deployment, decisions, testing, and failure analysis.
