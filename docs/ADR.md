@@ -604,3 +604,28 @@ The registry-side race (registering on upgrade) is left as is: glare is legal in
 - (-) Any mesh member can still deregister any agent, because the registry cannot bind `agent_id` to a credential (T8 residual).
 
 **Related:** ADR-009 (pairing + approval), ADR-020 (gaps left open until chatixia-world needed them), ADR-023 (public copy pointed at the open gaps), THREAT_MODEL.md (G1–G3, T1, T4, T8, T9, T10).
+
+---
+
+## ADR-025: Finish Each Offer Before Reading the Next Signaling Message
+
+**Date:** 2026-09-29
+**Status:** Accepted
+
+**Context:** ADR-021's glare tie-break only runs when our own offer to the peer is already on record in `have-local-offer`. The sidecar's signaling loop spawned both `initiate_connection` (from `peer_list`) and `handle_offer` as background tasks, so a crossing offer from the same peer could be read before ours was recorded. Two outcomes followed: we answered their offer and then overwrote it with our own, or, when both sides hit the window at once, both answered, both rejected the other's answer ("invalid proposed signaling state transition from stable applying remote answer"), and nothing connected for 30 s. The new two-sidecar integration test (`tests/integration/`), which forces both sidecars to see each other in the same `peer_list`, failed 4 of 12 glare runs this way, one of them with the full deadlock. No unit test had covered it (ADR-021, ADR-022).
+
+**Decision:**
+
+1. The signaling loop awaits `initiate_connection` for each peer in `peer_list` and awaits `handle_offer`, so an offer or answer is on record before the next signaling message is read.
+2. When a side yields under glare, it closes its abandoned offer only after the replacement connection is recorded, so the old connection's `Closed` callback sees a stale connection and does not report `peer_disconnected`.
+3. The two-sidecar integration test runs in CI (`integration` job) and covers connect, message exchange both ways, re-dial after a SIGSTOP past the ICE consent timeout (ADR-022), and forced glare.
+
+**Consequences:**
+
+- (+) Glare resolves to exactly one negotiation: 25 of 25 forced-glare runs passed after the change, and the unit test `crossing_offers_resolve_to_exactly_one_negotiation` fails on the old code.
+- (+) ADR-021 and ADR-022 now have automated evidence instead of manual runs.
+- (-) Offers to several peers in one `peer_list` are created one after another instead of in parallel; each is local work (create offer, set local description, send), so the delay is small.
+- (-) Still open, found while writing the test and lesson 18: the IPC `connect` command still starts offers in the background; a later `peer_list` can start a second offer while a handshake is in progress (`is_connected` only turns true when the DataChannel opens); queued ICE candidates are keyed by peer, not by connection; a connection dropped as `Disconnected` is removed but never closed.
+
+**Related:** ADR-021 (glare tie-break, candidate buffering), ADR-022 (re-dial), ADR-024 (registry auth, which the test's sidecars pass with API keys), lesson 18.
+
