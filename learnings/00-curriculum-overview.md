@@ -105,15 +105,16 @@ Requires Tier 2. These lessons examine architectural decisions, patterns, and tr
 | 13 | [Building Monitoring Dashboards](13-building-monitoring-dashboards.md) | Polling vs push, topology visualization, health indicators, designing for operational visibility | `hub/src/` |
 | 14 | [Threat Modeling](14-threat-modeling.md) | Attack surfaces, trust boundaries, authentication gaps, mitigations, writing a threat model for your own system | `docs/THREAT_MODEL.md` |
 
-### Tier 4 -- Operations (Lessons 15-17)
+### Tier 4 -- Operations (Lessons 15-18)
 
-Requires Tier 3. These lessons cover deploying, documenting, and testing the system.
+Requires Tier 3. These lessons cover deploying, documenting, testing, and debugging the system.
 
 | # | Lesson | What you will learn | Key files |
 |---|--------|--------------------|----|
 | 15 | [Deployment Patterns](15-deployment-patterns.md) | Docker Compose, Cloudflare Tunnel, TURN relay setup, connectivity tiers, cross-network deployment | `docker-compose.yml`, `docs/DEPLOYMENT_GUIDE.md` |
 | 16 | [Architecture Decision Records](16-architecture-decision-records.md) | Why ADRs matter, how to write them, reading chatixia-mesh's ADR log, making decisions explicit | `docs/ADR.md` |
 | 17 | [Testing Distributed Systems](17-testing-distributed-systems.md) | Unit testing async code, integration testing across process boundaries, simulating network failures | `registry/`, `agent/` |
+| 18 | [When Handshakes Fail](18-when-handshakes-fail.md) | Offer glare and deterministic tie-breaks, early ICE candidate buffering, identity-checked peer removal, re-dialing after ICE consent failure, what unit tests cannot see | `sidecar/src/signaling.rs`, `sidecar/src/mesh.rs`, `sidecar/src/webrtc_peer.rs` |
 
 ---
 
@@ -166,6 +167,10 @@ The following diagram shows which lessons must be completed before others. Read 
           15 Deployment     16 ADRs     17 Testing
           Patterns                      Distributed
                                         Systems
+                                           |
+                                    18 When Handshakes
+                                       Fail
+                                    (also needs 03, 05)
 ```
 
 ---
@@ -178,7 +183,7 @@ Not everyone needs every lesson. Here are focused reading orders for specific go
 
 Follow the networking track from fundamentals through signaling to transport trade-offs.
 
-**Path:** 01 -> 02 -> 03 -> 05
+**Path:** 01 -> 02 -> 03 -> 05 -> 18
 
 | Lesson | Why |
 |--------|-----|
@@ -186,8 +191,9 @@ Follow the networking track from fundamentals through signaling to transport tra
 | 02 Peer-to-Peer Networking | NAT traversal, STUN/TURN, ICE |
 | 03 WebRTC Fundamentals | SDP, DTLS, DataChannels |
 | 05 Signaling Protocol Design | How chatixia-mesh coordinates WebRTC setup |
+| 18 When Handshakes Fail | What goes wrong when two real peers negotiate at once, and how the sidecar recovers |
 
-**Time estimate:** 4-6 hours
+**Time estimate:** 5-7.5 hours
 
 ### "I want to build AI agents"
 
@@ -239,6 +245,8 @@ Skip the theory, go straight to running and managing the system.
 
 **Time estimate:** 4-6 hours
 
+If you will be debugging connections that fail to form or do not come back, add 03 -> 05 -> 18 afterwards.
+
 ---
 
 ## Time Estimates
@@ -250,8 +258,8 @@ Each lesson is designed to take **60-90 minutes** at a comfortable pace. This in
 | Tier 1 -- Foundations | 4 lessons | 4-6 hours |
 | Tier 2 -- Core Mechanics | 5 lessons | 5-7 hours |
 | Tier 3 -- System Design | 5 lessons | 5-7 hours |
-| Tier 4 -- Operations | 3 lessons | 3-5 hours |
-| **Full curriculum** | **17 lessons** | **25-30 hours** |
+| Tier 4 -- Operations | 4 lessons | 4-6.5 hours |
+| **Full curriculum** | **18 lessons** | **26-32 hours** |
 
 The focused learning paths above take 4-12 hours depending on the track.
 
@@ -275,7 +283,7 @@ The project's own documentation is also a learning resource:
 |----------|----------------|
 | `docs/SYSTEM_DESIGN.md` | Architecture overview, communication layers, authentication flow, scalability |
 | `docs/COMPONENTS.md` | Complete codebase map -- every file, struct, route, and environment variable |
-| `docs/ADR.md` | 18 architecture decisions with context, rationale, and consequences |
+| `docs/ADR.md` | 23 architecture decisions with context, rationale, and consequences |
 | `docs/THREAT_MODEL.md` | Security analysis -- attack surfaces, trust boundaries, mitigations |
 | `docs/WEBRTC_VS_ALTERNATIVES.md` | Transport comparison with devil's advocate analysis |
 | `docs/DEPLOYMENT_GUIDE.md` | Cross-network deployment with Cloudflare Tunnel and TURN relay |

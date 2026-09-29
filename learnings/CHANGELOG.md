@@ -6,6 +6,19 @@ Format: `[YYYY-MM-DD] — Summary of changes`
 
 ---
 
+## [2026-09-29] — Lesson 18: When Handshakes Fail
+
+### Added
+- **18-when-handshakes-fail.md** — Offer glare and the deterministic `peer_id` tie-break, early ICE candidate buffering, identity-checked peer removal, re-dialing after ICE consent failure while signaling is up, why unit tests missed these bugs, and what is still untested (ADR-021, ADR-022)
+- **glossary.md** — Hairpinning, ICE Candidate Buffering, ICE Consent Freshness, Identity-Checked Removal, Offer Glare, Perfect Negotiation, Polite Peer / Impolite Peer, Re-dial, Signaling State, Stale Callback, Trickle ICE
+- **reading-list.md** — RFC 8838 (Trickle ICE), RFC 7675 (consent freshness), RFC 9429 (JSEP), MDN perfect negotiation pattern, Mozilla "Perfect negotiation in WebRTC"
+
+### Changed
+- **00-curriculum-overview.md** — Lesson 18 added to Tier 4, the dependency graph, the WebRTC learning path and the time estimates; ADR count corrected to 23
+- **CURRICULUM.md** — Lesson 18 row; Tier 4 now spans Lessons 15-18
+
+---
+
 ## [2026-09-29] — Threat modeling case study: closing G1–G3
 
 ### Changed
