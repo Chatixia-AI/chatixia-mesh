@@ -15,7 +15,7 @@ uuid = { workspace = true }
 dotenvy = { workspace = true }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs", "cors"] }
-jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 hmac = "0.13"
 sha1 = "0.11"
 base64 = "0.22"
