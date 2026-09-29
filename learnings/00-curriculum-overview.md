@@ -114,7 +114,7 @@ Requires Tier 3. These lessons cover deploying, documenting, testing, and debugg
 | 15 | [Deployment Patterns](15-deployment-patterns.md) | Docker Compose, Cloudflare Tunnel, TURN relay setup, connectivity tiers, cross-network deployment | `docker-compose.yml`, `docs/DEPLOYMENT_GUIDE.md` |
 | 16 | [Architecture Decision Records](16-architecture-decision-records.md) | Why ADRs matter, how to write them, reading chatixia-mesh's ADR log, making decisions explicit | `docs/ADR.md` |
 | 17 | [Testing Distributed Systems](17-testing-distributed-systems.md) | Unit testing async code, integration testing across process boundaries, simulating network failures | `registry/`, `agent/` |
-| 18 | [When Handshakes Fail](18-when-handshakes-fail.md) | Offer glare and deterministic tie-breaks, early ICE candidate buffering, identity-checked peer removal, re-dialing after ICE consent failure, what unit tests cannot see | `sidecar/src/signaling.rs`, `sidecar/src/mesh.rs`, `sidecar/src/webrtc_peer.rs` |
+| 18 | [When Handshakes Fail](18-when-handshakes-fail.md) | Offer glare and deterministic tie-breaks, early ICE candidate buffering, identity-checked peer removal, re-dialing after ICE consent failure, what unit tests cannot see and how a two-sidecar integration test found the last glare race | `sidecar/src/signaling.rs`, `sidecar/src/mesh.rs`, `sidecar/src/webrtc_peer.rs`, `tests/integration/` |
 
 ---
 

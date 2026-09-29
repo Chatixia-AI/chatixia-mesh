@@ -315,11 +315,11 @@ When the sidecar receives a `peer_list`, it initiates WebRTC connections to each
         for peer_val in peers {
             if let Some(pid) = peer_val.as_str() {
                 if pid != local_peer_id && !mesh.is_connected(pid) {
-                    tokio::spawn(async move {
-                        webrtc_peer::initiate_connection(
-                            &local_id, &target_id, sig_tx, mesh, to_agent,
-                        ).await
-                    });
+                    // Awaited, not spawned: our offer must be on record
+                    // before the next signaling message is read (ADR-025).
+                    webrtc_peer::initiate_connection(
+                        local_peer_id, pid, sig_tx.clone(), mesh.clone(), to_agent_tx.clone(),
+                    ).await;
                 }
             }
         }
@@ -327,7 +327,7 @@ When the sidecar receives a `peer_list`, it initiates WebRTC connections to each
 }
 ```
 
-The `initiate_connection` function creates an `RTCPeerConnection`, generates an SDP offer, and sends it through the signaling channel. The registry sees an `offer` message and relays it to the target peer.
+The `initiate_connection` function creates an `RTCPeerConnection`, generates an SDP offer, and sends it through the signaling channel. The registry sees an `offer` message and relays it to the target peer, provided both the sender and the target are authorized (ADR-024 applies the same check to `offer`, `answer` and `ice_candidate` that `register` uses).
 
 ### Step 6: Answer
 
@@ -336,12 +336,11 @@ When a sidecar receives an `offer`, it creates its own `RTCPeerConnection`, sets
 ```rust
 "offer" => {
     let from_peer = msg.peer_id.clone();
+    // (offer-glare check omitted here; see Lesson 18)
     if let Some(sdp) = msg.payload.get("sdp").and_then(|s| s.as_str()) {
-        tokio::spawn(async move {
-            webrtc_peer::handle_offer(
-                &local_id, &from_peer, &sdp, sig_tx, mesh, to_agent,
-            ).await
-        });
+        webrtc_peer::handle_offer(
+            local_peer_id, &from_peer, sdp, sig_tx.clone(), mesh.clone(), to_agent_tx.clone(),
+        ).await;
     }
 }
 ```
@@ -354,7 +353,10 @@ The registry relays the answer back to the offerer, who sets it as the remote de
     if let Some(sdp) = msg.payload.get("sdp").and_then(|s| s.as_str()) {
         if let Some(pc) = mesh.get_pc(&from_peer) {
             let answer = RTCSessionDescription::answer(sdp.to_string()).unwrap();
-            pc.set_remote_description(answer).await;
+            if pc.set_remote_description(answer).await.is_ok() {
+                // Apply any ICE candidates that arrived before the answer.
+                mesh.flush_candidates(&from_peer).await;
+            }
         }
     }
 }
@@ -367,23 +369,33 @@ While the SDP exchange is happening, both sides begin gathering ICE candidates (
 ```rust
 "ice_candidate" => {
     let from_peer = msg.peer_id.clone();
-    if let Some(pc) = mesh.get_pc(&from_peer) {
-        let candidate = msg.payload.get("candidate")
-            .and_then(|c| c.as_str()).unwrap_or("").to_string();
-        let sdp_mid = msg.payload.get("sdpMid")
-            .and_then(|s| s.as_str()).map(|s| s.to_string());
-        let sdp_mline_index = msg.payload.get("sdpMLineIndex")
-            .and_then(|n| n.as_u64()).map(|n| n as u16);
-        let init = RTCIceCandidateInit {
-            candidate, sdp_mid, sdp_mline_index,
-            username_fragment: Some(String::new()),
-        };
-        pc.add_ice_candidate(init).await;
+    let candidate = msg.payload.get("candidate")
+        .and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let sdp_mid = msg.payload.get("sdpMid")
+        .and_then(|s| s.as_str()).map(|s| s.to_string());
+    let sdp_mline_index = msg.payload.get("sdpMLineIndex")
+        .and_then(|n| n.as_u64()).map(|n| n as u16);
+    let init = RTCIceCandidateInit {
+        candidate, sdp_mid, sdp_mline_index,
+        username_fragment: None,
+    };
+    // A candidate can arrive before its connection has a remote
+    // description; hold it until the description is set.
+    match mesh.get_pc(&from_peer) {
+        Some(pc) if pc.remote_description().await.is_some() => {
+            let _ = pc.add_ice_candidate(init).await;
+        }
+        _ => {
+            mesh.queue_candidate(&from_peer, init);
+            mesh.flush_candidates(&from_peer).await;
+        }
     }
 }
 ```
 
 The ICE candidate payload contains three fields following the WebRTC standard: `candidate` (the candidate string), `sdpMid` (which media stream it applies to), and `sdpMLineIndex` (the index in the SDP).
+
+The excerpts above are simplified (logging and error handling removed). The queueing, the awaited handlers and the glare check in the `offer` arm each exist because of a bug found when two real sidecars first connected. [Lesson 18: When Handshakes Fail](18-when-handshakes-fail.md) tells that story.
 
 Multiple candidates are typically exchanged in both directions. The number depends on the network configuration -- a machine with multiple network interfaces will produce more candidates than one with a single interface.
 

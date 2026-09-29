@@ -191,7 +191,7 @@ Network Address Translation -- maps private IPs to public IPs. Prevents direct i
 ## O
 
 **Offer Glare**
-Also called an offer collision. Both peers send an SDP offer for the same connection at the same time, so each receives an offer while in the `have-local-offer` signaling state. Without a rule for which offer wins, the peers can deadlock or build duplicate connections. The sidecar resolves it deterministically: the lower `peer_id` keeps its offer and the higher one yields (ADR-021).
+Also called an offer collision. Both peers send an SDP offer for the same connection at the same time, so each receives an offer while in the `have-local-offer` signaling state. Without a rule for which offer wins, the peers can deadlock or build duplicate connections. The sidecar resolves it deterministically: the lower `peer_id` keeps its offer and the higher one yields (ADR-021). The check only works if the sidecar's own offer is already in `have-local-offer` when the other offer is read, so the signaling loop awaits each offer and answer before reading the next message (ADR-025).
 *First introduced: Lesson 18*
 
 **OIDC Trusted Publisher**
