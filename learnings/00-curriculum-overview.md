@@ -283,7 +283,7 @@ The project's own documentation is also a learning resource:
 |----------|----------------|
 | `docs/SYSTEM_DESIGN.md` | Architecture overview, communication layers, authentication flow, scalability |
 | `docs/COMPONENTS.md` | Complete codebase map -- every file, struct, route, and environment variable |
-| `docs/ADR.md` | 23 architecture decisions with context, rationale, and consequences |
+| `docs/ADR.md` | 25 architecture decisions with context, rationale, and consequences |
 | `docs/THREAT_MODEL.md` | Security analysis -- attack surfaces, trust boundaries, mitigations |
 | `docs/WEBRTC_VS_ALTERNATIVES.md` | Transport comparison with devil's advocate analysis |
 | `docs/DEPLOYMENT_GUIDE.md` | Cross-network deployment with Cloudflare Tunnel and TURN relay |
