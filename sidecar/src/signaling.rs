@@ -183,29 +183,28 @@ async fn handle_signaling_message(
 ) {
     match msg.msg_type.as_str() {
         "peer_list" => {
-            // Registry tells us about other connected peers — initiate offers
+            // Registry tells us about other connected peers — initiate offers.
+            //
+            // Awaited here, not spawned: the offer must be on record (in
+            // `have-local-offer`) before this loop reads the next signaling
+            // message, or a crossing offer from the same peer is answered
+            // without the glare check and both sides end up answering.
             if let Some(peers) = msg.payload.get("peers").and_then(|p| p.as_array()) {
                 for peer_val in peers {
                     if let Some(pid) = peer_val.as_str() {
                         if pid != local_peer_id && !mesh.is_connected(pid) {
                             info!("[SIG] initiating connection to peer: {}", pid);
-                            let mesh = mesh.clone();
-                            let sig_tx = sig_tx.clone();
-                            let local_id = local_peer_id.to_string();
-                            let target_id = pid.to_string();
-                            let to_agent = to_agent_tx.clone();
-                            tokio::spawn(async move {
-                                if let Err(e) = webrtc_peer::initiate_connection(
-                                    &local_id, &target_id, sig_tx, mesh, to_agent,
-                                )
-                                .await
-                                {
-                                    error!(
-                                        "[SIG] failed to initiate connection to {}: {}",
-                                        target_id, e
-                                    );
-                                }
-                            });
+                            if let Err(e) = webrtc_peer::initiate_connection(
+                                local_peer_id,
+                                pid,
+                                sig_tx.clone(),
+                                mesh.clone(),
+                                to_agent_tx.clone(),
+                            )
+                            .await
+                            {
+                                error!("[SIG] failed to initiate connection to {}: {}", pid, e);
+                            }
                         }
                     }
                 }
@@ -219,6 +218,7 @@ async fn handle_signaling_message(
             // registering in the same instant both see each other in their
             // peer_list). Deterministic tie-break so exactly one offer wins:
             // the lower peer_id keeps its offer, the higher one yields.
+            let mut yielded = None;
             if let Some(existing) = mesh.get_pc(&from_peer) {
                 if existing.signaling_state() == RTCSignalingState::HaveLocalOffer {
                     if glare_keep_local_offer(local_peer_id, &from_peer) {
@@ -232,26 +232,33 @@ async fn handle_signaling_message(
                         "[SIG] offer glare with {}: yielding to their offer",
                         from_peer
                     );
-                    tokio::spawn(async move {
-                        let _ = existing.close().await;
-                    });
+                    yielded = Some(existing);
                 }
             }
 
+            // Awaited for the same reason as `peer_list`: the answering
+            // connection is on record before the next message is read.
             if let Some(sdp) = msg.payload.get("sdp").and_then(|s| s.as_str()) {
-                let mesh = mesh.clone();
-                let sig_tx = sig_tx.clone();
-                let local_id = local_peer_id.to_string();
-                let sdp = sdp.to_string();
-                let to_agent = to_agent_tx.clone();
+                if let Err(e) = webrtc_peer::handle_offer(
+                    local_peer_id,
+                    &from_peer,
+                    sdp,
+                    sig_tx.clone(),
+                    mesh.clone(),
+                    to_agent_tx.clone(),
+                )
+                .await
+                {
+                    error!("[SIG] failed to handle offer from {}: {}", from_peer, e);
+                }
+            }
+
+            // Close the abandoned offer only after its replacement is on
+            // record, so its Closed callback sees a stale connection and
+            // does not report the peer as disconnected.
+            if let Some(existing) = yielded {
                 tokio::spawn(async move {
-                    if let Err(e) = webrtc_peer::handle_offer(
-                        &local_id, &from_peer, &sdp, sig_tx, mesh, to_agent,
-                    )
-                    .await
-                    {
-                        error!("[SIG] failed to handle offer from {}: {}", from_peer, e);
-                    }
+                    let _ = existing.close().await;
                 });
             }
         }
@@ -333,7 +340,130 @@ fn glare_keep_local_offer(local_peer_id: &str, remote_peer_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::glare_keep_local_offer;
+    use super::{glare_keep_local_offer, handle_signaling_message};
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use tokio::sync::mpsc;
+    use webrtc::peer_connection::signaling_state::RTCSignalingState;
+
+    use crate::mesh::MeshManager;
+    use crate::protocol::{IpcMessage, SignalingMessage};
+
+    struct Side {
+        id: &'static str,
+        mesh: Arc<MeshManager>,
+        sig_tx: mpsc::UnboundedSender<String>,
+        sig_rx: mpsc::UnboundedReceiver<String>,
+        agent_tx: mpsc::UnboundedSender<IpcMessage>,
+        _agent_rx: mpsc::UnboundedReceiver<IpcMessage>,
+    }
+
+    impl Side {
+        fn new(id: &'static str) -> Self {
+            let (sig_tx, sig_rx) = mpsc::unbounded_channel();
+            let (agent_tx, _agent_rx) = mpsc::unbounded_channel();
+            Self {
+                id,
+                mesh: Arc::new(MeshManager::new(id.into())),
+                sig_tx,
+                sig_rx,
+                agent_tx,
+                _agent_rx,
+            }
+        }
+
+        async fn handle(&self, msg: SignalingMessage) {
+            handle_signaling_message(msg, self.id, &self.sig_tx, &self.mesh, &self.agent_tx).await;
+        }
+
+        /// Next outbound signaling message of `msg_type` (skips trickled
+        /// ice_candidate messages). Fails if none is already queued or
+        /// arrives within a second.
+        async fn next_sent(&mut self, msg_type: &str) -> SignalingMessage {
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            loop {
+                let raw = tokio::time::timeout_at(deadline, self.sig_rx.recv())
+                    .await
+                    .unwrap_or_else(|_| panic!("{} sent no {}", self.id, msg_type))
+                    .expect("signaling channel closed");
+                let msg: SignalingMessage = serde_json::from_str(&raw).unwrap();
+                if msg.msg_type == msg_type {
+                    return msg;
+                }
+            }
+        }
+
+        /// Types of every outbound message queued so far.
+        fn drain_sent(&mut self) -> Vec<String> {
+            let mut types = Vec::new();
+            while let Ok(raw) = self.sig_rx.try_recv() {
+                let msg: SignalingMessage = serde_json::from_str(&raw).unwrap();
+                types.push(msg.msg_type);
+            }
+            types
+        }
+
+        fn state_toward(&self, peer: &str) -> RTCSignalingState {
+            self.mesh
+                .get_pc(peer)
+                .expect("no connection on record")
+                .signaling_state()
+        }
+    }
+
+    fn peer_list(peer: &str) -> SignalingMessage {
+        SignalingMessage {
+            msg_type: "peer_list".into(),
+            peer_id: "registry".into(),
+            target_id: None,
+            payload: serde_json::json!({ "peers": [peer] }),
+        }
+    }
+
+    /// Two sidecars get each other in their peer_list at the same moment and
+    /// both offer (ADR-021). The offer must already be on record when the
+    /// peer_list handler returns; when it was spawned instead, a crossing
+    /// offer could be answered without the glare check and both sides
+    /// rejected the other's answer ("stable applying remote answer").
+    #[tokio::test]
+    async fn crossing_offers_resolve_to_exactly_one_negotiation() {
+        let mut a = Side::new("glare-a");
+        let mut b = Side::new("glare-b");
+
+        a.handle(peer_list(b.id)).await;
+        b.handle(peer_list(a.id)).await;
+        assert_eq!(a.state_toward(b.id), RTCSignalingState::HaveLocalOffer);
+        assert_eq!(b.state_toward(a.id), RTCSignalingState::HaveLocalOffer);
+        let a_offer = a.next_sent("offer").await;
+        let b_offer = b.next_sent("offer").await;
+        let a_offerer = a.mesh.get_pc(b.id).unwrap();
+        let b_offerer = b.mesh.get_pc(a.id).unwrap();
+
+        // The offers cross. The lower id keeps its offer and ignores theirs.
+        a.handle(b_offer).await;
+        assert!(Arc::ptr_eq(&a.mesh.get_pc(b.id).unwrap(), &a_offerer));
+        assert_eq!(a.state_toward(b.id), RTCSignalingState::HaveLocalOffer);
+        // The higher id yields: its answering connection replaces its offer.
+        b.handle(a_offer).await;
+        assert!(!Arc::ptr_eq(&b.mesh.get_pc(a.id).unwrap(), &b_offerer));
+        assert_eq!(b.state_toward(a.id), RTCSignalingState::Stable);
+
+        // Exactly one answer comes back, and it applies to A's offer.
+        let b_answer = b.next_sent("answer").await;
+        a.handle(b_answer).await;
+        assert_eq!(a.state_toward(b.id), RTCSignalingState::Stable);
+        assert!(Arc::ptr_eq(&a.mesh.get_pc(b.id).unwrap(), &a_offerer));
+        assert!(
+            !a.drain_sent().contains(&"answer".to_string()),
+            "A must not answer B's abandoned offer"
+        );
+
+        a.mesh.clear_all_peers().await;
+        b.mesh.clear_all_peers().await;
+        let _ = b_offerer.close().await;
+    }
 
     #[test]
     fn glare_exactly_one_side_keeps_its_offer() {

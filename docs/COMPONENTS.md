@@ -15,6 +15,7 @@ chatixia-mesh/
 ├── hub/                # React (Vite): monitoring dashboard
 ├── infra/              # Nginx + coturn configs
 ├── site/               # GitHub Pages documentation site
+├── tests/integration/  # Python (pytest): real registry + two real sidecars
 ├── docs/               # Documentation
 ├── .github/workflows/  # CI, PyPI publishing, GitHub Pages deployment
 ├── docker-compose.yml  # Full stack: registry + sidecar + agent (+ coturn)
@@ -150,7 +151,7 @@ Rust crate — one per Python agent. WebRTC mesh peer with IPC bridge.
 |------|---------|
 | `src/main.rs` | Entry point, token exchange, component wiring |
 | `src/protocol.rs` | All message types: `SignalingMessage`, `MeshMessage`, `IpcMessage` |
-| `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration |
+| `src/signaling.rs` | WebSocket client with auto-reconnect (exponential backoff), SDP/ICE relay, peer connection orchestration. `peer_list` offers and incoming offers are awaited in the read loop, not spawned, so an offer is on record in `have-local-offer` before the next message is read and the glare tie-break always sees it (ADR-021) |
 | `src/webrtc_peer.rs` | `RTCPeerConnection` creation, ICE forwarding with diagnostic logging (candidate type/address, connection state, gathering state, selected candidate pair on `connected`), DataChannel setup, peer lifecycle IPC events (`peer_connected`/`peer_disconnected`), `ICE_TRANSPORT_POLICY=relay` support |
 | `src/mesh.rs` | `MeshManager` — tracks all peer connections and DataChannels; buffers early remote ICE candidates until a remote description is set; identity-checked peer removal so a connection replaced during glare cannot remove its replacement (ADR-021) |
 | `src/ipc.rs` | Unix socket server, JSON-line protocol with Python agent, `peer_list` response |
@@ -345,6 +346,30 @@ Atmospheric Luminescence design system — light-mode glassmorphic. Inline CSS w
 
 ---
 
+## Integration Tests (`tests/integration/`)
+
+Python pytest suite that runs a real `chatixia-registry` and two real `chatixia-sidecar` processes on localhost (host ICE candidates; no Docker, STUN reachability or TURN) and plays a minimal agent on each sidecar's IPC socket. Standard library only.
+
+```bash
+uvx pytest tests/integration -v      # from the repo root; runs `cargo build` (debug) first
+```
+
+| File | Purpose |
+|------|---------|
+| `harness.py` | `MeshCluster` (temp dir, `api_keys.json` with two API-key peers `itest-a`/`itest-b`, registry on a free port, sidecars, teardown of processes and temp files, log dump on failure), `Proc` (child process with log file, `pause`/`resume` via SIGSTOP/SIGCONT, `wait_for_log`), `FakeAgent` (IPC JSON-lines client: records events, `send_text`, `connected_peers`), `WsGate` (TCP proxy that holds both sidecars' `/ws` upgrades and releases them together to force offer glare) |
+| `conftest.py` | `binaries` fixture (`locate_binaries()`), kills any leaked process after each test |
+| `test_two_sidecars.py` | `test_connect_and_exchange_messages` (both report `peer_connected`, a message each way, `list_peers`, direct ICE pair); `test_redial_after_ice_consent_timeout` (SIGSTOP one sidecar for 36 s, past the 30 s ICE consent failure: the other reports `peer_disconnected` and re-dials, then after SIGCONT the link heals with no signaling reconnect, ADR-022); `test_simultaneous_dial_glare` (both sidecars offer at once: the lower `peer_id` keeps its offer, the higher yields, one connection results, ADR-021) |
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHATIXIA_BIN_DIR` | _(unset: `cargo build`, then `$CARGO_TARGET_DIR/debug` or `target/debug`)_ | Directory holding prebuilt `chatixia-registry` and `chatixia-sidecar` |
+| `CHATIXIA_ITEST_LOG_DIR` | _(unset)_ | Copy each scenario's process logs to `<dir>/<scenario>/` (CI uploads them on failure) |
+| `CHATIXIA_ITEST_RUST_LOG` | `info` | `RUST_LOG` passed to the registry and sidecars |
+
+The child processes get a minimal environment (`PATH`, `HOME`, `LANG`, `TMPDIR`): no proxy variables (reqwest would send the token exchange through them), no TURN settings. The registry also gets `REGISTRY_ADMIN_TOKEN`; the test never calls admin endpoints.
+
+---
+
 ## Infrastructure (`infra/`)
 
 | File | Purpose |
@@ -407,7 +432,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-024) |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-025) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |
@@ -436,7 +461,7 @@ GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` dire
 
 | Workflow | Trigger | Purpose |
 | -------- | ------- | ------- |
-| `ci.yml` | Push to `main`, `v*` tags, PRs to `main` | Rust lint/test, Python lint/test, Hub build, Docker build (PRs), **version bump check** (PRs), **release binaries** (pushes and tags only) |
+| `ci.yml` | Push to `main`, `v*` tags, PRs to `main` | Rust lint/test, **two-sidecar integration test**, Python lint/test, Hub build, Docker build (PRs), **version bump check** (PRs), **release binaries** (pushes and tags only) |
 | `publish-pypi.yml` | GitHub Release (`v*` tag) | Build and publish `chatixia` package to PyPI via OIDC trusted publisher |
 | `pages.yml` | Push to `main` (`site/**`), manual | Deploy documentation site to GitHub Pages |
 
@@ -446,6 +471,7 @@ GitHub Actions workflow (`.github/workflows/pages.yml`) deploys the `site/` dire
 | --- | ----- | ------- |
 | `rust-lint` | `Cargo.toml` workspace | `cargo fmt --check` + `cargo clippy` |
 | `rust-test` | `Cargo.toml` workspace | `cargo test --workspace` |
+| `integration` | `tests/integration/` + registry/sidecar | Ruff check/format of `tests/integration`, `cargo build` (debug) of `chatixia-registry` + `chatixia-sidecar`, then `uvx pytest@9.1.1 tests/integration` with `CHATIXIA_BIN_DIR=target/debug`; uploads `itest-logs/` as artifact `integration-logs` on failure |
 | `python-lint` | `agent/` | Ruff check + format via `uvx` |
 | `python-test` | `agent/` | `uv sync --all-groups` + `uv run pytest` |
 | `hub` | `hub/` | `pnpm install` + `tsc --noEmit` + `pnpm build` |

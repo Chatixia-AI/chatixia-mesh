@@ -168,6 +168,12 @@ cd hub && npm install && npm run build && cd ..
 cargo run --release -p chatixia-registry
 ```
 
+**Integration test** (Linux, needs [uv](https://docs.astral.sh/uv/)): builds the registry and sidecar, then runs a real registry and two real sidecars on localhost. They connect, exchange messages, re-dial after a SIGSTOP past the ICE consent timeout, and resolve offer glare. It takes about 40 seconds.
+
+```bash
+uvx pytest tests/integration -v
+```
+
 ## Agent onboarding
 
 chatixia-mesh uses an invite + approval flow to control who joins the network:
@@ -241,6 +247,7 @@ chatixia-mesh/
 │       └── core/       # Mesh client, skill handlers
 ├── hub/                # Monitoring dashboard (React/Vite)
 ├── site/               # GitHub Pages documentation site
+├── tests/integration/  # Real registry + two real sidecars (pytest)
 ├── infra/              # nginx, coturn configs
 └── docs/               # Architecture, components, ADRs, threat model
 ```

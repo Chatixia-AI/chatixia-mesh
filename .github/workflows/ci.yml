@@ -41,6 +41,38 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+  # ── Integration: real registry + two real sidecars ──────────────
+  # Connect, message both ways, re-dial after an ICE consent timeout
+  # (SIGSTOP, ADR-022) and offer glare (ADR-021). Runs natively on
+  # localhost with host ICE candidates; no Docker, no TURN.
+  integration:
+    name: Integration (two sidecars)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v7
+      - name: ruff (tests/integration)
+        run: |
+          uvx ruff@0.15.0 check tests/integration
+          uvx ruff@0.15.0 format --check tests/integration
+      - name: cargo build (registry + sidecar)
+        run: cargo build -p chatixia-registry -p chatixia-sidecar
+      - name: pytest
+        env:
+          CHATIXIA_BIN_DIR: target/debug
+          CHATIXIA_ITEST_LOG_DIR: itest-logs
+        run: uvx pytest@9.1.1 tests/integration -v --durations=0
+      - name: Upload process logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-logs
+          path: itest-logs/
+          if-no-files-found: ignore
+
   # ── Python ──────────────────────────────────────────────────────
   python-lint:
     name: Python Lint

@@ -89,7 +89,7 @@ E2E tests require:
 - **Timing sensitivity** -- heartbeat intervals, connection setup delays, task polling
 - **Complex setup and teardown** -- process lifecycle, port allocation, cleanup
 
-In chatixia-mesh, E2E testing is currently done manually with 2 agents against a running registry (documented in session notes). Automating this requires orchestration tooling that has not yet been built.
+In chatixia-mesh, full E2E testing with real agents and an LLM is still done by hand (documented in session notes). The transport underneath is automated: `tests/integration/` starts a real registry and two real sidecars on localhost, plays the agent on each IPC socket, and checks that they connect, exchange messages both ways, re-dial after one sidecar is frozen with SIGSTOP past the ICE consent timeout (ADR-022), and resolve offer glare when both dial at once (ADR-021). Its first runs caught a glare race that the unit tests could not see.
 
 The insight: **you cannot skip E2E testing for distributed systems, but you can minimize how often you need it** by pushing as many boundary-crossing tests as possible into the integration tier.
 
