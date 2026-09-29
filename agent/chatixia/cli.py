@@ -244,11 +244,14 @@ def _cmd_pair(args: argparse.Namespace) -> int:
     print(f"  Entry ID: {entry_id}")
     print(f"  Peer ID:  {peer_id}")
 
+    pairing_secret = data.get("pairing_secret", "")
+
     if status == "pending_approval":
         print("\nWaiting for admin approval in the hub dashboard.")
-        print("Once approved, your device token will be shown here.")
+        print("Once approved, the status endpoint returns your device token:")
         print(
-            f"Check status: curl {registry}/api/pairing/all | jq '.[] | select(.id==\"{entry_id}\")'"
+            f"  curl -H 'x-pairing-secret: {pairing_secret}' "
+            f"{registry}/api/pairing/{entry_id}/status"
         )
 
     # Save pairing result to .chatixia/pairing.json for later use
@@ -262,6 +265,7 @@ def _cmd_pair(args: argparse.Namespace) -> int:
         "peer_id": peer_id,
         "status": status,
         "registry": registry,
+        "pairing_secret": pairing_secret,
     }
     pairing_file.write_text(json.dumps(pairing_data, indent=2), encoding="utf-8")
     print(f"\nPairing info saved to {pairing_file}")

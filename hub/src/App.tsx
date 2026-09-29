@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Agent, Task, Topology, OnboardingEntry, fetchAgents, fetchTasks, fetchTopology, fetchPendingApprovals } from './api'
+import {
+  Agent, Task, Topology, OnboardingEntry, fetchAgents, fetchTasks, fetchTopology, fetchPendingApprovals,
+  ADMIN_LOCKED_EVENT, UnauthorizedError, adoptAdminTokenFromUrl, clearAdminToken, getAdminToken, setAdminToken,
+} from './api'
 import { AgentCards } from './components/AgentCards'
 import { TaskQueue } from './components/TaskQueue'
 import { NetworkTopology } from './components/NetworkTopology'
 import { AgentChat } from './components/AgentChat'
 import { ApprovalQueue } from './components/ApprovalQueue'
+import { AdminLock } from './components/AdminLock'
 import { color, font, spacing, glass, gradient, radius, shadow } from './theme'
 
 export default function App() {
@@ -13,6 +17,10 @@ export default function App() {
   const [topology, setTopology] = useState<Topology | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [pendingApprovals, setPendingApprovals] = useState<OnboardingEntry[]>([])
+  const [unlocked, setUnlocked] = useState(() => {
+    adoptAdminTokenFromUrl()
+    return getAdminToken() !== null
+  })
   const [clock, setClock] = useState(() => new Date().toLocaleTimeString('en', { hour12: false }))
 
   const refresh = useCallback(async () => {
@@ -21,7 +29,11 @@ export default function App() {
         fetchAgents(),
         fetchTasks(),
         fetchTopology(),
-        fetchPendingApprovals(),
+        // Admin-only; without a valid token the queue is simply hidden
+        fetchPendingApprovals().catch((e: unknown) => {
+          if (e instanceof UnauthorizedError) return []
+          throw e
+        }),
       ])
       setAgents(Array.isArray(a) ? a : [])
       setTasks(Array.isArray(t) ? t : [])
@@ -31,6 +43,23 @@ export default function App() {
       console.error('refresh error:', e)
     }
   }, [])
+
+  useEffect(() => {
+    const onLocked = () => { setUnlocked(false); setPendingApprovals([]) }
+    window.addEventListener(ADMIN_LOCKED_EVENT, onLocked)
+    return () => window.removeEventListener(ADMIN_LOCKED_EVENT, onLocked)
+  }, [])
+
+  const unlock = (token: string) => {
+    setAdminToken(token)
+    setUnlocked(true)
+    refresh()
+  }
+  const lock = () => {
+    clearAdminToken()
+    setUnlocked(false)
+    setPendingApprovals([])
+  }
 
   useEffect(() => {
     refresh()
@@ -84,6 +113,7 @@ export default function App() {
           }}>chatixia <span style={{ color: color.onSurfaceMuted, fontWeight: 400 }}>//</span> <span style={{ fontWeight: 400, color: color.onSurfaceMuted }}>mesh hub</span></h1>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <AdminLock unlocked={unlocked} onUnlock={unlock} onLock={lock} />
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -122,7 +152,7 @@ export default function App() {
         <StatCard label="agents online" value={activeCount} accent={color.active} />
         <StatCard label="total agents" value={agents.length} accent={color.primary} />
         <StatCard label="pending tasks" value={pendingCount} accent={color.stale} />
-        <StatCard label="awaiting approval" value={pendingApprovals.length} accent={color.stale} />
+        <StatCard label="awaiting approval" value={unlocked ? pendingApprovals.length : '—'} accent={color.stale} />
       </div>
 
       {/* Main Content */}
@@ -153,7 +183,7 @@ export default function App() {
   )
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+function StatCard({ label, value, accent }: { label: string; value: number | string; accent: string }) {
   return (
     <div style={{
       ...glass.card,

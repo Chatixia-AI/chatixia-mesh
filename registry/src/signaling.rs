@@ -60,7 +60,9 @@ impl SignalingState {
     ///
     /// `approved_peers` — peer_ids approved through the pairing system.
     /// `legacy_peers` — peer_ids with static API keys (auto-approved).
-    /// Peers in either set are considered authorized; others get an empty peer_list.
+    /// Peers in either set are considered authorized. Others get an empty
+    /// peer_list, and offer/answer/ice_candidate is only relayed when both the
+    /// sender and the target are authorized.
     pub fn handle_message(
         &self,
         msg: SignalingMessage,
@@ -92,8 +94,22 @@ impl SignalingState {
                 }
             }
             "offer" | "answer" | "ice_candidate" => {
-                // Relay to target peer
+                // Relay to target peer — only between two authorized peers (G2).
                 if let Some(target_id) = &msg.target_id {
+                    if !is_authorized(&msg.peer_id) || !is_authorized(target_id) {
+                        warn!(
+                            "[SIG] dropped {} from {} → {}: {} is not approved",
+                            msg.msg_type,
+                            msg.peer_id,
+                            target_id,
+                            if is_authorized(&msg.peer_id) {
+                                "target"
+                            } else {
+                                "sender"
+                            }
+                        );
+                        return;
+                    }
                     if let Some(sender) = self.peers.get(target_id) {
                         let json = serde_json::to_string(&msg).unwrap();
                         if sender.send(json).is_err() {
@@ -202,8 +218,8 @@ mod tests {
         state.add_peer("p1", tx1);
         state.add_peer("p2", tx2);
 
-        let approved = HashSet::new();
-        let legacy = HashSet::new();
+        let approved: HashSet<String> = ["p1"].iter().map(|s| s.to_string()).collect();
+        let legacy: HashSet<String> = ["p2"].iter().map(|s| s.to_string()).collect();
 
         state.handle_message(make_msg("offer", "p1", Some("p2")), &approved, &legacy);
 
@@ -211,6 +227,75 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&relayed).unwrap();
         assert_eq!(parsed["type"], "offer");
         assert_eq!(parsed["peer_id"], "p1");
+    }
+
+    fn set(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_relay_refused_from_unapproved_sender() {
+        let state = SignalingState::new();
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        state.add_peer("pending", tx1);
+        state.add_peer("p2", tx2);
+
+        for t in ["offer", "answer", "ice_candidate"] {
+            state.handle_message(
+                make_msg(t, "pending", Some("p2")),
+                &set(&["p2"]),
+                &HashSet::new(),
+            );
+        }
+        assert!(
+            rx2.try_recv().is_err(),
+            "unapproved sender must not reach p2"
+        );
+    }
+
+    #[test]
+    fn test_relay_refused_to_unapproved_target() {
+        let state = SignalingState::new();
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        state.add_peer("p1", tx1);
+        state.add_peer("pending", tx2);
+
+        state.handle_message(
+            make_msg("offer", "p1", Some("pending")),
+            &HashSet::new(),
+            &set(&["p1"]),
+        );
+        assert!(
+            rx2.try_recv().is_err(),
+            "unapproved target must not receive SDP"
+        );
+    }
+
+    #[test]
+    fn test_relay_answer_and_ice_between_approved_peers() {
+        let state = SignalingState::new();
+        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx2, _rx2) = mpsc::unbounded_channel();
+        state.add_peer("p1", tx1);
+        state.add_peer("p2", tx2);
+
+        let approved = set(&["p1", "p2"]);
+        state.handle_message(
+            make_msg("answer", "p2", Some("p1")),
+            &approved,
+            &HashSet::new(),
+        );
+        state.handle_message(
+            make_msg("ice_candidate", "p2", Some("p1")),
+            &approved,
+            &HashSet::new(),
+        );
+        let first: serde_json::Value = serde_json::from_str(&rx1.try_recv().unwrap()).unwrap();
+        let second: serde_json::Value = serde_json::from_str(&rx1.try_recv().unwrap()).unwrap();
+        assert_eq!(first["type"], "answer");
+        assert_eq!(second["type"], "ice_candidate");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { submitTask } from '../api'
+import { UnauthorizedError, submitTask } from '../api'
 import { color, font, spacing, glass, radius, shadow, gradient } from '../theme'
 
 interface Props {
@@ -24,7 +24,7 @@ export function AgentChat({ agentId, onClose }: Props) {
       setStatus(`Task submitted: ${result.task_id}`)
       setMessage('')
     } catch (e) {
-      setStatus(`Error: ${e}`)
+      setStatus(e instanceof UnauthorizedError ? 'Unlock the hub with the admin token to send.' : `Error: ${e}`)
     }
   }
 

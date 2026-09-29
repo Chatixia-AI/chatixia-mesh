@@ -2,6 +2,69 @@
 
 const BASE = '';  // Same origin — proxied by Vite in dev
 
+// ─── Admin token (ADR-024) ─────────────────────────────────────────────────
+//
+// Pairing admin routes and every write need the registry admin token, sent as
+// the `x-admin-token` header. It lives in sessionStorage (cleared when the tab
+// closes) and can be handed over in the URL fragment the registry logs at
+// startup: http://host:8080/#admin_token=adm_...
+
+const TOKEN_KEY = 'chatixia.adminToken';
+export const ADMIN_LOCKED_EVENT = 'chatixia:admin-locked';
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('admin token required');
+  }
+}
+
+export function getAdminToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminToken(token: string): void {
+  try {
+    sessionStorage.setItem(TOKEN_KEY, token.trim());
+  } catch {
+    // storage unavailable (private mode) — the token just won't persist
+  }
+}
+
+export function clearAdminToken(): void {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Move `#admin_token=...` from the URL into sessionStorage and strip it from the address bar. */
+export function adoptAdminTokenFromUrl(): void {
+  const match = window.location.hash.match(/admin_token=([^&]+)/);
+  if (!match) return;
+  setAdminToken(decodeURIComponent(match[1]));
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
+/** fetch with the admin token; a 401 clears the stored token and notifies the app. */
+async function adminFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = getAdminToken();
+  if (!token) throw new UnauthorizedError();
+  const headers = new Headers(init.headers);
+  headers.set('x-admin-token', token);
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  if (res.status === 401) {
+    clearAdminToken();
+    window.dispatchEvent(new Event(ADMIN_LOCKED_EVENT));
+    throw new UnauthorizedError();
+  }
+  return res;
+}
+
 export interface Agent {
   agent_id: string;
   hostname: string;
@@ -80,30 +143,26 @@ export interface OnboardingEntry {
 }
 
 export async function fetchPendingApprovals(): Promise<OnboardingEntry[]> {
-  const res = await fetch(`${BASE}/api/pairing/pending`);
+  const res = await adminFetch('/api/pairing/pending');
   return res.json();
 }
 
 export async function approveAgent(id: string): Promise<OnboardingEntry> {
-  const res = await fetch(`${BASE}/api/pairing/${id}/approve`, { method: 'POST' });
+  const res = await adminFetch(`/api/pairing/${id}/approve`, { method: 'POST' });
   return res.json();
 }
 
 export async function rejectAgent(id: string): Promise<OnboardingEntry> {
-  const res = await fetch(`${BASE}/api/pairing/${id}/reject`, { method: 'POST' });
+  const res = await adminFetch(`/api/pairing/${id}/reject`, { method: 'POST' });
   return res.json();
 }
 
 export async function revokeAgent(id: string): Promise<void> {
-  await fetch(`${BASE}/api/pairing/${id}/revoke`, { method: 'POST' });
+  await adminFetch(`/api/pairing/${id}/revoke`, { method: 'POST' });
 }
 
-export async function generateInviteCode(
-  apiKey?: string,
-): Promise<{ code: string; expires_in: number }> {
-  const headers: Record<string, string> = {};
-  if (apiKey) headers['x-api-key'] = apiKey;
-  const res = await fetch(`${BASE}/api/pairing/generate-code`, { method: 'POST', headers });
+export async function generateInviteCode(): Promise<{ code: string; expires_in: number }> {
+  const res = await adminFetch('/api/pairing/generate-code', { method: 'POST' });
   return res.json();
 }
 
@@ -115,7 +174,7 @@ export async function submitTask(task: {
   source_agent_id?: string;
   payload: Record<string, unknown>;
 }): Promise<{ task_id: string }> {
-  const res = await fetch(`${BASE}/api/hub/tasks`, {
+  const res = await adminFetch('/api/hub/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(task),

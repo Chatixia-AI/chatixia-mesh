@@ -8,7 +8,15 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::info;
 
+use crate::admin::RequireCaller;
 use crate::AppState;
+
+/// Heartbeat age after which an agent is `stale`.
+const STALE_AFTER_SECS: f64 = 90.0;
+/// Heartbeat age after which an agent is `offline`.
+const OFFLINE_AFTER_SECS: f64 = 270.0;
+/// Heartbeat age after which an agent is removed from the registry (G3).
+pub const DEFAULT_AGENT_EVICTION_SECS: u64 = 3600;
 
 /// Agent registration payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,22 +108,35 @@ impl RegistryState {
         }
     }
 
-    /// Background health check — marks agents as stale/offline.
-    pub async fn health_check_loop(&self) {
+    /// Background health check — marks agents stale/offline, evicts long-gone ones.
+    pub async fn health_check_loop(&self, eviction: Duration) {
         loop {
             tokio::time::sleep(Duration::from_secs(15)).await;
-            let now = epoch_now();
-            for mut entry in self.agents.iter_mut() {
-                let age = now - entry.last_heartbeat_epoch;
-                entry.health = if age > 270.0 {
-                    "offline".into()
-                } else if age > 90.0 {
-                    "stale".into()
-                } else {
-                    "active".into()
-                };
+            let evicted = self.sweep(epoch_now(), eviction);
+            if evicted > 0 {
+                info!("[REG] evicted {} offline agents", evicted);
             }
         }
+    }
+
+    /// One pass: update each agent's health from its heartbeat age and remove
+    /// agents silent for longer than `eviction` (never sooner than the offline
+    /// threshold). Returns the number of agents removed.
+    pub fn sweep(&self, now: f64, eviction: Duration) -> usize {
+        let before = self.agents.len();
+        let evict_after = eviction.as_secs_f64().max(OFFLINE_AFTER_SECS);
+        self.agents.retain(|_, agent| {
+            let age = now - agent.last_heartbeat_epoch;
+            agent.health = if age > OFFLINE_AFTER_SECS {
+                "offline".into()
+            } else if age > STALE_AFTER_SECS {
+                "stale".into()
+            } else {
+                "active".into()
+            };
+            age <= evict_after
+        });
+        before.saturating_sub(self.agents.len())
     }
 
     /// Get all agents as a list.
@@ -154,9 +175,10 @@ fn epoch_now() -> f64 {
 
 // ─── HTTP Handlers ───────────────────────────────────────────────────────
 
-/// POST /api/registry/agents — register or update an agent.
+/// POST /api/registry/agents — register or update an agent. Needs a caller credential.
 pub async fn register_agent(
     State(state): State<AppState>,
+    _caller: RequireCaller,
     Json(info): Json<AgentInfo>,
 ) -> Json<serde_json::Value> {
     let now = Utc::now().to_rfc3339();
@@ -184,12 +206,14 @@ pub async fn list_agents(State(state): State<AppState>) -> Json<Vec<AgentRecord>
 }
 
 /// DELETE /api/registry/agents/:agent_id — unregister an agent.
+/// Needs a caller credential (admin from the hub, or the agent's own API key on shutdown).
 pub async fn delete_agent(
     State(state): State<AppState>,
+    RequireCaller(caller): RequireCaller,
     Path(agent_id): Path<String>,
 ) -> Json<serde_json::Value> {
     if state.registry.agents.remove(&agent_id).is_some() {
-        info!("[REG] agent unregistered: {}", agent_id);
+        info!("[REG] agent unregistered: {} (by {:?})", agent_id, caller);
         Json(serde_json::json!({ "status": "ok" }))
     } else {
         Json(serde_json::json!({ "error": "not found" }))
@@ -224,8 +248,10 @@ pub async fn route_by_skill(
 }
 
 /// POST /api/hub/heartbeat — receive heartbeat from agent (compat with chatixia-agent SDK).
+/// Needs a caller credential: the response hands out pending tasks.
 pub async fn heartbeat(
     State(state): State<AppState>,
+    _caller: RequireCaller,
     Json(hb): Json<Heartbeat>,
 ) -> Json<serde_json::Value> {
     let now_str = Utc::now().to_rfc3339();
@@ -365,6 +391,41 @@ mod tests {
         reg.agents
             .insert("a1".into(), make_agent("a1", vec!["chat".into()], "active"));
         assert!(reg.find_by_skill("search").is_empty());
+    }
+
+    #[test]
+    fn test_sweep_marks_health_and_evicts_after_window() {
+        let reg = RegistryState::new();
+        let now = epoch_now();
+        let mut stale = make_agent("stale", vec![], "active");
+        stale.last_heartbeat_epoch = now - 120.0;
+        let mut offline = make_agent("offline", vec![], "active");
+        offline.last_heartbeat_epoch = now - 600.0;
+        let mut gone = make_agent("gone", vec![], "offline");
+        gone.last_heartbeat_epoch = now - 7200.0;
+        reg.agents
+            .insert("fresh".into(), make_agent("fresh", vec![], "active"));
+        reg.agents.insert("stale".into(), stale);
+        reg.agents.insert("offline".into(), offline);
+        reg.agents.insert("gone".into(), gone);
+
+        assert_eq!(reg.sweep(now, Duration::from_secs(3600)), 1);
+        assert!(reg.get("gone").is_none());
+        assert_eq!(reg.get("fresh").unwrap().health, "active");
+        assert_eq!(reg.get("stale").unwrap().health, "stale");
+        assert_eq!(reg.get("offline").unwrap().health, "offline");
+    }
+
+    #[test]
+    fn test_sweep_never_evicts_before_offline() {
+        let reg = RegistryState::new();
+        let now = epoch_now();
+        let mut stale = make_agent("stale", vec![], "active");
+        stale.last_heartbeat_epoch = now - 120.0;
+        reg.agents.insert("stale".into(), stale);
+        // A window shorter than the offline threshold is clamped up to it.
+        assert_eq!(reg.sweep(now, Duration::from_secs(10)), 0);
+        assert!(reg.get("stale").is_some());
     }
 
     #[test]

@@ -22,3 +22,8 @@ base64 = "0.22"
 dashmap = "6"
 rand = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
+subtle = "2"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
