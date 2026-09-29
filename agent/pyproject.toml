@@ -34,7 +34,6 @@ chatixia = "chatixia.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Chatixia-AI/chatixia-mesh"
-Documentation = "https://mesh.chatixia.net"
 Repository = "https://github.com/Chatixia-AI/chatixia-mesh"
 Issues = "https://github.com/Chatixia-AI/chatixia-mesh/issues"
 
