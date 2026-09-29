@@ -1,6 +1,6 @@
 <p align="center">
   <strong>chatixia-mesh</strong><br/>
-  The decentralized agent mesh
+  A working agent-to-agent network, and a course on how it's built
 </p>
 
 <p align="center">
@@ -10,30 +10,37 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-An agent-to-agent mesh network built on WebRTC. Agents discover each other through a registry, communicate directly over DTLS-encrypted peer-to-peer channels, and are monitored from a real-time dashboard. The registry handles signaling only — it never touches your data.
+chatixia-mesh is a real, running agent-to-agent network built on WebRTC, taken apart in the open so you can learn how it works. Agents find each other through a registry, then talk directly over DTLS-encrypted peer-to-peer channels; the registry handles signaling only and never touches their messages.
+
+Every part of it is written down: an 18-lesson course that walks through the system from first principles, 23 architecture decision records, and a threat model that lists what is still open.
 
 <p align="center">
-  <a href="https://chatixia-ai.web.app?utm_source=github&utm_medium=readme">Website</a> ·
+  <a href="https://blog.chatixia.net?utm_source=github&utm_medium=readme"><b>Start the course</b></a> ·
   <a href="https://chatixia-ai.github.io/chatixia-mesh">Documentation</a> ·
   <a href="docs/SYSTEM_DESIGN.md">Architecture</a> ·
-  <a href="docs/COMPONENTS.md">Components</a> ·
-  <a href="docs/ADR.md">ADRs</a>
+  <a href="docs/ADR.md">Decisions</a> ·
+  <a href="docs/THREAT_MODEL.md">Threat model</a> ·
+  <a href="https://chatixia.net?utm_source=github&utm_medium=readme">chatixia.net</a>
 </p>
 
-**Status (2026-04-10):** chatixia-mesh is no longer a standalone product. It is the transport layer ("nervous system") for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world): the Rust sidecar and registry carry creature-to-creature traffic across machines. The product roadmap was retired; further mesh work is driven by what chatixia-world Phase 2 (multi-machine) needs. See ADR-020. As of 2026-09-22 two chatixia-world instances hold live LLM dialogue over sidecar DataChannels (see ADR-021 for the handshake fixes that took).
+## What this is, and what it isn't
+
+- **A reference system to learn from.** About 6,000 lines of Rust and Python, small enough to read end to end, and the [course](https://blog.chatixia.net) (sources in [`learnings/`](learnings/)) teaches distributed systems through it: peer-to-peer networking, WebRTC, signaling, IPC, the sidecar pattern, threat modeling, deployment and testing.
+- **The transport layer for chatixia-world**, Chatixia's creature world: the Rust sidecar and registry carry creature-to-creature traffic between machines. Since 2026-09-22 two world instances hold live conversations over sidecar DataChannels (ADR-021). What the world needs next is what gets built here (ADR-020).
+- **Not a product, and not hardened for production.** There is no roadmap. The [threat model](docs/THREAT_MODEL.md#known-open-gaps-unmitigated-as-of-2026-04-10) lists open gaps, including unauthenticated pairing admin endpoints. Run it on networks you trust, or treat it as a starting point.
 
 ---
 
-## Why chatixia-mesh
+## Design at a glance
 
-| | chatixia-mesh | Centralized frameworks |
+| | chatixia-mesh | A centralized design |
 | --- | --- | --- |
 | **Data path** | P2P — DTLS-encrypted DataChannels between agents | All traffic routed through a central server |
 | **Agent runtime** | Sidecar pattern — WebRTC in Rust, agents write Python | Agents coupled to framework internals |
-| **Deployment** | Self-hosted first — no external dependencies, on-prem ready | Cloud-dependent or SaaS |
+| **Deployment** | Self-hosted — no external services required | Usually a hosted control plane |
 | **Interop** | Open standards — WebRTC (ICE/DTLS/SCTP), JSON messages over DataChannels | Proprietary protocols |
 
-CrewAI, AutoGen, and LangGraph route all agent traffic through a central server. chatixia-mesh doesn't.
+Why these choices, and what they cost, is in the [ADRs](docs/ADR.md) and lesson 11, [Transport Comparison](learnings/11-transport-comparison.md).
 
 ## How it works
 
@@ -245,7 +252,8 @@ chatixia-mesh/
 | [COMPONENTS.md](docs/COMPONENTS.md) | Detailed reference of every module, struct, route, and env var |
 | [SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Architecture, protocols, auth flows |
 | [ADR.md](docs/ADR.md) | Architecture decision records |
-| Roadmap | Retired 2026-04-10. chatixia-mesh is now the transport layer for [chatixia-world](https://github.com/Chatixia-AI/chatixia-world); the old roadmap is archived there as `docs/archive/ROADMAP_mesh_original.md`. |
+| Roadmap | Retired 2026-04-10 (ADR-020). chatixia-mesh is the transport layer for chatixia-world; the old roadmap is archived in that repository. |
+| [CURRICULUM.md](CURRICULUM.md) · [`learnings/`](learnings/) | The 18-lesson course, glossary and reading list, published at [blog.chatixia.net](https://blog.chatixia.net) |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | Security analysis and mitigations |
 | [GLOSSARY.md](docs/GLOSSARY.md) | Domain terminology |
 
