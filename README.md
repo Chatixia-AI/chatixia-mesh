@@ -27,7 +27,7 @@ Every part of it is written down: an 18-lesson course that walks through the sys
 
 - **A reference system to learn from.** About 6,000 lines of Rust and Python, small enough to read end to end, and the [course](https://blog.chatixia.net) (sources in [`learnings/`](learnings/)) teaches distributed systems through it: peer-to-peer networking, WebRTC, signaling, IPC, the sidecar pattern, threat modeling, deployment and testing.
 - **The transport layer for chatixia-world**, Chatixia's creature world: the Rust sidecar and registry carry creature-to-creature traffic between machines. Since 2026-09-22 two world instances hold live conversations over sidecar DataChannels (ADR-021). What the world needs next is what gets built here (ADR-020).
-- **Not a product, and not hardened for production.** There is no roadmap. The [threat model](docs/THREAT_MODEL.md#known-open-gaps-unmitigated-as-of-2026-04-10) lists open gaps, including unauthenticated pairing admin endpoints. Run it on networks you trust, or treat it as a starting point.
+- **Not a product, and not hardened for production.** There is no roadmap. The [threat model](docs/THREAT_MODEL.md#known-gaps) lists what is and is not covered: the registry now requires an admin token for pairing approval and a credential for every write (ADR-024), but read endpoints are open, there is no rate limiting and no native TLS. Run it on networks you trust, or treat it as a starting point.
 
 ---
 

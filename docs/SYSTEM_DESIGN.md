@@ -38,7 +38,7 @@ Since 2026-04-10 chatixia-mesh is the transport substrate for the `chatixia-worl
 ### Layer 1: Signaling (WebSocket + JWT)
 
 - Sidecar → Registry: SDP offers/answers, ICE candidates
-- Registry relays to target sidecar
+- Registry relays to target sidecar, only when both sender and target are approved or legacy (API-key) peers (ADR-024)
 - JWT authentication (5-min expiry, API key exchange)
 - Sender verification: JWT `sub` must match message `peer_id`
 
@@ -60,19 +60,51 @@ Since 2026-04-10 chatixia-mesh is the transport substrate for the `chatixia-worl
 - Task queue (submit, poll on heartbeat, update)
 - Topology for dashboard visualization
 - ICE server configuration (STUN + optional TURN)
+- Reads are open; writes need a credential and pairing administration needs the admin token (see Authentication Flow)
 
 ## Authentication Flow
+
+### Sidecar (signaling)
 
 ```text
 Agent starts
   → Sidecar reads API_KEY from environment
-  → POST /api/token with X-API-Key header
-  → Registry validates key against api_keys.json
+  → POST /api/token with X-API-Key header (or X-Device-Token for a paired device)
+  → Registry validates key against api_keys.json (or the approved device token)
   → Returns JWT (5-min TTL) + peer_id + role
   → Sidecar connects to /ws?token=<jwt>
   → Registry validates JWT on WebSocket upgrade
   → Sidecar sends { type: "register" }
-  → Registry replies with peer_list
+  → Registry replies with peer_list (only approved + legacy peers; empty for others)
+  → offer / answer / ice_candidate relayed only if sender AND target are approved or legacy
+```
+
+JWTs are signed with `SIGNALING_SECRET`; when it is unset the registry uses a random secret per run (only the registry verifies JWTs, and sidecars fetch a new one on every reconnect).
+
+### HTTP API
+
+Three levels, enforced by axum extractors in `registry/src/admin.rs` (ADR-024):
+
+| Level | Credential | Routes |
+|-------|-----------|--------|
+| open | none | `GET` agents, route, tasks, topology, config; `POST /api/token`; `POST /api/pairing/pair` (the invite code is the credential) |
+| caller | `x-admin-token`, a known `x-api-key`, or an approved `x-device-token` | register agent, heartbeat, `DELETE` agent, submit task, update task; `generate-code` (admin or API key only) |
+| admin | `x-admin-token` | `GET /api/pairing/pending`, `GET /api/pairing/all`, `POST /api/pairing/{id}/approve|reject|revoke` |
+
+The admin token comes from `REGISTRY_ADMIN_TOKEN`. When unset, the registry generates one at startup and logs it once together with a hub link (`http://localhost:8080/#admin_token=…`). Comparison is constant-time. Browsers only get CORS headers for origins in `REGISTRY_ALLOWED_ORIGINS`; the bundled hub is same-origin and needs none.
+
+### Pairing a new device
+
+```text
+Admin (hub, x-admin-token) or member (x-api-key)
+  → POST /api/pairing/generate-code → 6-digit code (300 s, single use)
+New device
+  → POST /api/pairing/pair {code, agent_name} → {id, peer_id, status: pending_approval, pairing_secret}
+Admin in hub
+  → POST /api/pairing/{id}/approve (x-admin-token) → device token generated
+New device
+  → GET /api/pairing/{id}/status (x-pairing-secret) → {status: approved, device_token}
+  → POST /api/token (x-device-token) → JWT → /ws as above
 ```
 
 ## Task Lifecycle
@@ -89,7 +121,7 @@ Agent starts
 
 Task states: `pending` → `assigned` → `completed` | `failed`
 
-Default TTL: 300s (5 minutes). Expiry check runs every 30s.
+Default TTL: 300s (5 minutes). Expiry check runs every 30s. Finished tasks (`completed`/`failed`) are removed once they have not been updated for `REGISTRY_TASK_RETENTION_SECS` (default 1 h), so `/api/hub/tasks/{id}` answers "not found" after that.
 
 ## Agent Lifecycle
 
@@ -101,7 +133,7 @@ Default TTL: 300s (5 minutes). Expiry check runs every 30s.
 
 ### Deregistration
 
-- On clean shutdown (SIGINT/SIGTERM): agent calls `DELETE /api/registry/agents/{agent_id}` — instant removal from dashboard
+- On clean shutdown (SIGINT/SIGTERM): agent calls `DELETE /api/registry/agents/{agent_id}` with its `x-api-key` — instant removal from dashboard
 - On hard crash (SIGKILL, OOM, network loss): no deregister call — registry relies on health check (see below)
 
 ### Health Tracking
@@ -112,6 +144,7 @@ Default TTL: 300s (5 minutes). Expiry check runs every 30s.
   - **active**: last heartbeat <90s ago
   - **stale**: 90–270s ago (likely dead, shutdown handler didn't run)
   - **offline**: >270s ago (confirmed dead)
+  - **evicted**: removed from the registry after `REGISTRY_AGENT_EVICTION_SECS` without a heartbeat (default 1 h, never below 270 s); a returning agent re-registers on its next heartbeat
 - Hub dashboard color-codes agents by health state
 
 ## NAT Traversal
@@ -156,4 +189,5 @@ See [WEBRTC_VS_ALTERNATIVES.md](WEBRTC_VS_ALTERNATIVES.md) for the full comparis
 - Full mesh: O(N²) connections. Practical for ~10-50 agents.
 - Registry is stateless (in-memory DashMap) — no persistence. Restart = agents re-register on next heartbeat.
 - Task queue is in-memory. No durability guarantee.
+- Memory is bounded by activity inside the retention windows (finished tasks, silent agents, rejected/revoked onboarding entries are evicted by the background loops), not by uptime.
 - For larger deployments: consider switching to selective mesh (topic-based routing) and persistent task queue (Redis/PostgreSQL).

@@ -103,3 +103,5 @@ Agent starts
 3. **DTLS** — WebRTC DataChannels are encrypted by default
 4. **TURN credentials** — Ephemeral (coturn use-auth-secret mode, 24h TTL)
 5. **Sender verification** — Registry checks JWT peer_id matches message peer_id
+6. **Approval-gated relay** — SDP/ICE is relayed only between approved or legacy peers
+7. **Admin token** — Pairing approval and hub writes need `x-admin-token` (`REGISTRY_ADMIN_TOKEN`, generated if unset); other writes need an API key or device token; CORS is an allowlist (ADR-024)

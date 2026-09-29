@@ -34,9 +34,10 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 
 | File | Purpose |
 |------|---------|
-| `src/main.rs` | Entry point, route setup, WebSocket upgrade handler, `AppState` |
+| `src/main.rs` | Entry point, env config, `build_router` (route table), WebSocket upgrade handler, `AppState`, router-level auth/CORS tests |
+| `src/admin.rs` | Admin token (`REGISTRY_ADMIN_TOKEN`, generated when unset), constant-time compare, `RequireAdmin` / `RequireCaller` extractors, CORS allowlist (`REGISTRY_ALLOWED_ORIGINS`) (ADR-024) |
 | `src/auth.rs` | API key → JWT exchange, ICE config endpoint, TURN credential generation |
-| `src/signaling.rs` | WebSocket relay for SDP/ICE messages, peer tracking |
+| `src/signaling.rs` | WebSocket relay for SDP/ICE messages (only between approved/legacy peers), peer tracking |
 | `src/registry.rs` | Agent registration, discovery, health checks, skill routing |
 | `src/hub.rs` | Task queue (submit, poll, update, expire), task lifecycle |
 | `src/pairing.rs` | Agent pairing + approval: invite codes, onboarding pipeline, revocation |
@@ -46,7 +47,10 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 
 | Struct | Module | Description |
 |--------|--------|-------------|
-| `AppState` | `main` | Shared state: `Arc<AuthState>`, `Arc<SignalingState>`, `Arc<RegistryState>`, `Arc<HubState>`, `Arc<PairingState>` |
+| `AppState` | `main` | Shared state: `Arc<AuthState>`, `Arc<AdminAuth>`, `Arc<SignalingState>`, `Arc<RegistryState>`, `Arc<HubState>`, `Arc<PairingState>` |
+| `AdminAuth` | `admin` | The registry admin token; `verify()` compares in constant time |
+| `RequireAdmin` | `admin` | Axum extractor: request has a valid `x-admin-token`, else 401 |
+| `RequireCaller` / `Caller` | `admin` | Axum extractor: admin token, known `x-api-key` or approved `x-device-token`, else 401; yields `Caller::{Admin, ApiKey(peer_id), Device(peer_id)}` |
 | `Claims` | `auth` | JWT claims: `sub` (peer_id), `role`, `exp`, `iat` |
 | `ApiKeyEntry` | `auth` | API key mapping: `peer_id`, `role` |
 | `AuthState` | `auth` | JWT secret + API key store (`RwLock<HashMap>`) |
@@ -62,7 +66,7 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 | `Task` | `hub` | Full task record with lifecycle timestamps |
 | `HubState` | `hub` | Task store (`DashMap<String, Task>`) |
 | `InviteCode` | `pairing` | Ephemeral 6-digit invite code with TTL |
-| `OnboardingEntry` | `pairing` | Agent lifecycle: id, agent_name, peer_id, device_token, status (pending_approval→approved→revoked) |
+| `OnboardingEntry` | `pairing` | Agent lifecycle: id, agent_name, peer_id, device_token, `pairing_secret` (never serialized), status (pending_approval→approved→revoked) |
 | `PairingState` | `pairing` | Invite codes (`DashMap`), onboarding entries (`DashMap`), rate limiter (`DashMap`) |
 | `TopologyNode` | `topology` | Agent node for visualization: position, peer ID, skills count, mesh peers |
 | `TopologyResponse` | `topology` | `nodes` + `mesh_edges` |
@@ -70,51 +74,64 @@ Rust crate — signaling server, agent registry, and hub API. Port 8080.
 
 ### Routes
 
+Auth column: **open** = no credential; **caller** = admin token, `x-api-key` or `x-device-token` (`admin::RequireCaller`); **admin** = `x-admin-token` (`admin::RequireAdmin`). See ADR-024.
+
 ```
-POST /api/token                      # Exchange API key for JWT (auth.rs)
-GET  /ws?token=...                   # WebSocket upgrade (main.rs → signaling)
-GET  /api/registry/agents            # List all agents (registry.rs)
-POST /api/registry/agents            # Register/update agent (registry.rs)
-GET    /api/registry/agents/{agent_id}      # Get specific agent (registry.rs)
-DELETE /api/registry/agents/{agent_id}      # Unregister agent (registry.rs)
-GET    /api/registry/route?skill=...        # Find agent by skill (registry.rs)
-POST /api/hub/tasks                  # Submit task (hub.rs)
-GET  /api/hub/tasks/all              # List all tasks (hub.rs)
-GET  /api/hub/tasks/{task_id}        # Get task status (hub.rs)
-POST /api/hub/tasks/{task_id}        # Update task result (hub.rs)
-POST /api/hub/heartbeat              # Agent heartbeat — upserts agent record (registry.rs)
-GET  /api/hub/network/topology       # Mesh topology for visualization (topology.rs)
-POST /api/pairing/generate-code       # Generate 6-digit invite code (pairing.rs)
-POST /api/pairing/pair                # Redeem code, create pending entry (pairing.rs)
-GET  /api/pairing/pending             # List pending approvals (pairing.rs)
-GET  /api/pairing/all                 # List all onboarding entries (pairing.rs)
-POST /api/pairing/{id}/approve        # Approve pending agent (pairing.rs)
-POST /api/pairing/{id}/reject         # Reject pending agent (pairing.rs)
-POST /api/pairing/{id}/revoke         # Revoke approved agent (pairing.rs)
-GET  /api/config                      # ICE server config — STUN + optional TURN (auth.rs)
+POST   /api/token                       open   # Exchange API key or device token for JWT (auth.rs)
+GET    /ws?token=...                    JWT    # WebSocket upgrade (main.rs → signaling)
+GET    /api/registry/agents             open   # List all agents (registry.rs)
+POST   /api/registry/agents             caller # Register/update agent (registry.rs)
+GET    /api/registry/agents/{agent_id}  open   # Get specific agent (registry.rs)
+DELETE /api/registry/agents/{agent_id}  caller # Unregister agent (registry.rs)
+GET    /api/registry/route?skill=...    open   # Find agent by skill (registry.rs)
+POST   /api/hub/tasks                   caller # Submit task (hub.rs)
+GET    /api/hub/tasks/all               open   # List all tasks (hub.rs)
+GET    /api/hub/tasks/{task_id}         open   # Get task status (hub.rs)
+POST   /api/hub/tasks/{task_id}         caller # Update task result (hub.rs)
+POST   /api/hub/heartbeat               caller # Agent heartbeat — upserts agent record, returns pending tasks (registry.rs)
+GET    /api/hub/network/topology        open   # Mesh topology for visualization (topology.rs)
+POST   /api/pairing/generate-code       admin or x-api-key  # Generate 6-digit invite code (pairing.rs)
+POST   /api/pairing/pair                invite code         # Redeem code, create pending entry, return pairing_secret (pairing.rs)
+GET    /api/pairing/{id}/status         x-pairing-secret    # Device polls its entry; device_token once approved (pairing.rs)
+GET    /api/pairing/pending             admin  # List pending approvals (pairing.rs)
+GET    /api/pairing/all                 admin  # List all onboarding entries, incl. device tokens (pairing.rs)
+POST   /api/pairing/{id}/approve        admin  # Approve pending agent (pairing.rs)
+POST   /api/pairing/{id}/reject         admin  # Reject pending agent (pairing.rs)
+POST   /api/pairing/{id}/revoke         admin  # Revoke approved agent (pairing.rs)
+GET    /api/config                      open   # ICE server config — STUN + optional TURN (auth.rs)
 ```
+
+CORS: only origins in `REGISTRY_ALLOWED_ORIGINS` get CORS headers (methods GET/POST/DELETE; headers `content-type`, `x-admin-token`, `x-api-key`, `x-device-token`, `x-pairing-secret`).
 
 ### Auth and Pairing Constants
 
 - JWT lifetime is 300 s (`auth.rs:89`, `exp = now + 300`).
 - `POST /api/token` accepts either an API key or a device token via the `x-device-token` header; a valid device token issues a JWT for the paired `peer_id` with role `agent` (`auth.rs:150-171`).
 - Invite codes expire after 300 s; `/api/pairing/pair` is rate-limited to 5 attempts per IP per 60 s (`pairing.rs:64-66`).
-- On `/ws`, every inbound signaling message's `peer_id` must equal the JWT `sub`; mismatches are logged and dropped (`main.rs:185-188`).
+- On `/ws`, every inbound signaling message's `peer_id` must equal the JWT `sub`; mismatches are logged and dropped (`main.rs:276-279`).
+- `offer` / `answer` / `ice_candidate` are relayed only when both sender and target are approved (pairing) or legacy (API-key) peers (`signaling.rs`, `handle_message`).
+- Admin token: `REGISTRY_ADMIN_TOKEN`, or `adm_` + 64 hex generated at startup and logged once with a `/#admin_token=` hub link (`admin.rs`, `main.rs`). Pairing secrets are `ps_` + 64 hex, returned only by `/api/pairing/pair`.
+- `SIGNALING_SECRET` unset → random per-run JWT signing secret (`main.rs`).
 
 ### Background Tasks
 
 | Task | Interval | Logic |
 |------|----------|-------|
-| `health_check_loop` | 15s | Mark agents: active (<90s), stale (90–270s), offline (>270s) |
-| `expire_tasks_loop` | 30s | Fail pending/assigned tasks whose TTL has elapsed |
-| `cleanup_loop` (pairing) | 60s | Remove expired invite codes (>300s), prune rate-limit buckets |
+| `health_check_loop` | 15s | Mark agents: active (<90s), stale (90–270s), offline (>270s); evict agents silent longer than `REGISTRY_AGENT_EVICTION_SECS` (default 3600, never below 270) |
+| `expire_tasks_loop` | 30s | Fail unfinished tasks whose TTL has elapsed; evict `completed`/`failed` tasks last updated more than `REGISTRY_TASK_RETENTION_SECS` ago (default 3600) |
+| `cleanup_loop` (pairing) | 60s | Remove expired invite codes (>300s), drop rate-limit attempts older than 60s and empty buckets, evict `rejected`/`revoked` onboarding entries after `REGISTRY_ONBOARDING_RETENTION_SECS` (default 86400) |
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | HTTP listen port |
-| `SIGNALING_SECRET` | `dev-secret-change-me` | JWT signing secret |
+| `SIGNALING_SECRET` | _(random per run)_ | JWT signing secret. Unset or empty → random secret each start (sidecars re-fetch JWTs on reconnect) |
+| `REGISTRY_ADMIN_TOKEN` | _(random per run, logged once)_ | Admin token for the pairing admin routes and hub writes, sent as `x-admin-token` |
+| `REGISTRY_ALLOWED_ORIGINS` | `http://localhost:8080,http://127.0.0.1:8080,http://localhost:5174,http://127.0.0.1:5174` | Comma-separated CORS allowlist. Empty string = no cross-origin browser access; `*` is ignored |
+| `REGISTRY_TASK_RETENTION_SECS` | `3600` | How long `completed`/`failed` tasks are kept |
+| `REGISTRY_AGENT_EVICTION_SECS` | `3600` | Heartbeat age after which an agent is removed (minimum 270) |
+| `REGISTRY_ONBOARDING_RETENTION_SECS` | `86400` | How long `rejected`/`revoked` onboarding entries are kept |
 | `API_KEYS_FILE` | `api_keys.json` | Path to API key definitions |
 | `TURN_URL` | _(none)_ | Optional TURN server URL |
 | `TURN_SECRET` | _(none)_ | Coturn shared secret for ephemeral credentials |
@@ -187,7 +204,7 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 | `chatixia init [name] [-d dir]` | Scaffold a new agent into a `<name>/` subdirectory (`agent.yaml`, `AGENT.md`, `.env.example`, `.gitignore`). Use `-d .` to scaffold in the current directory. |
 | `chatixia run [manifest]` | Run agent — register, connect to mesh, heartbeat, execute tasks |
 | `chatixia validate [manifest]` | Validate manifest and print summary (shows AGENT.md status) |
-| `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network |
+| `chatixia pair <code> [manifest]` | Redeem 6-digit invite code to join a mesh network; saves entry id, peer id and pairing secret to `.chatixia/pairing.json` and prints the `/api/pairing/{id}/status` command that returns the device token once approved |
 | `chatixia -V` | Show version |
 
 ### CLI Modules (`chatixia/`)
@@ -206,7 +223,7 @@ Installed via `uv tool install chatixia`. Entry point: `chatixia.cli:main`.
 |------|---------|
 | `chatixia/core/__init__.py` | Core subpackage init |
 | `chatixia/core/mesh_client.py` | `MeshClient` — async IPC bridge to sidecar, message dispatch, request/response correlation, peer tracking |
-| `chatixia/core/mesh_skills.py` | Skill handlers: async P2P (`delegate`, `mesh_send`, `mesh_broadcast`) with registry fallback; sync HTTP (`list_agents`, `find_agent`) |
+| `chatixia/core/mesh_skills.py` | Skill handlers: async P2P (`delegate`, `mesh_send`, `mesh_broadcast`) with registry fallback (task POSTs carry `x-api-key` from `API_KEY`); sync HTTP (`list_agents`, `find_agent`) |
 | `run_agent.py` | Legacy standalone agent runner (use `chatixia run` instead) |
 | `.env` | Local env var defaults for agent runner (gitignored) |
 
@@ -274,7 +291,8 @@ Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full s
 |------|---------|
 | `src/theme.ts` | Centralized design tokens: colors, gradients, typography, spacing, radii, shadows, glass presets |
 | `src/App.tsx` | Main layout — sticky glass header, stat cards grid, polling orchestration |
-| `src/api.ts` | TypeScript API client — interfaces + fetch wrappers |
+| `src/api.ts` | TypeScript API client — interfaces + fetch wrappers; admin token in `sessionStorage` (`getAdminToken`/`setAdminToken`/`clearAdminToken`, `adoptAdminTokenFromUrl` for `#admin_token=`), `adminFetch` adds `x-admin-token` and on 401 clears the token and fires `chatixia:admin-locked` |
+| `src/components/AdminLock.tsx` | Header control: admin-token field + unlock, or lock button when unlocked |
 | `src/main.tsx` | React entry point |
 | `src/components/AgentCards.tsx` | Glassmorphic agent cards grid with health indicators, tonal detail rows, pill badges |
 | `src/components/TaskQueue.tsx` | Task list with spacing-based row separation (no divider lines), hover background shift, pill state badges |
@@ -311,15 +329,15 @@ Light-mode glassmorphic UI inspired by visionOS. See `docs/DESIGN.md` for full s
 GET  /api/registry/agents
 GET  /api/hub/tasks/all
 GET  /api/hub/network/topology
-POST /api/hub/tasks
-GET  /api/pairing/pending
-POST /api/pairing/{id}/approve
-POST /api/pairing/{id}/reject
-POST /api/pairing/{id}/revoke
-POST /api/pairing/generate-code
+POST /api/hub/tasks                 # x-admin-token
+GET  /api/pairing/pending           # x-admin-token (skipped while locked)
+POST /api/pairing/{id}/approve      # x-admin-token
+POST /api/pairing/{id}/reject       # x-admin-token
+POST /api/pairing/{id}/revoke       # x-admin-token
+POST /api/pairing/generate-code     # x-admin-token
 ```
 
-In development (`npm run dev`) the hub runs on port 5174 and the Vite proxy forwards `/api` and `/ws` to the registry on 8080. In production the registry serves the built `hub/dist` directly.
+In development (`npm run dev`) the hub runs on port 5174 and the Vite proxy forwards `/api` and `/ws` to the registry on 8080. In production the registry serves the built `hub/dist` directly. Both are same-origin from the browser's point of view, so the CORS allowlist does not affect the hub. Open the hub with the `/#admin_token=...` link the registry logs, or paste the token into the header field; it lasts for the tab.
 
 ### Styling
 
@@ -389,7 +407,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-023) |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-024) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |

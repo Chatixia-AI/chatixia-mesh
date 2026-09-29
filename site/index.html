@@ -897,7 +897,7 @@
 <section id="api" class="section">
   <div class="section-label">API Reference</div>
   <h3>Registry Endpoints</h3>
-  <p class="section-desc">All REST endpoints served by the registry on port 8080.</p>
+  <p class="section-desc">All REST endpoints served by the registry on port 8080. <em>Admin token</em> means the <code>x-admin-token</code> header; <em>credential</em> means the admin token, an <code>x-api-key</code> or an <code>x-device-token</code> (ADR-024). Other reads are open.</p>
 
   <div class="glass-card">
     <div class="api-group">
@@ -929,7 +929,7 @@
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/registry/agents</span>
-        <span class="api-desc">Register or update agent</span>
+        <span class="api-desc">Register or update agent (credential)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
@@ -939,7 +939,7 @@
       <div class="api-row">
         <span class="method-badge delete">DELETE</span>
         <span class="api-path">/api/registry/agents/{id}</span>
-        <span class="api-desc">Unregister agent</span>
+        <span class="api-desc">Unregister agent (credential)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
@@ -953,7 +953,7 @@
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/hub/tasks</span>
-        <span class="api-desc">Submit task</span>
+        <span class="api-desc">Submit task (credential)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
@@ -968,12 +968,12 @@
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/hub/tasks/{id}</span>
-        <span class="api-desc">Update task result</span>
+        <span class="api-desc">Update task result (credential)</span>
       </div>
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/hub/heartbeat</span>
-        <span class="api-desc">Agent heartbeat (upsert record)</span>
+        <span class="api-desc">Agent heartbeat (upsert record; credential)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
@@ -987,37 +987,42 @@
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/pairing/generate-code</span>
-        <span class="api-desc">Generate 6-digit invite code</span>
+        <span class="api-desc">Generate 6-digit invite code (admin token or API key)</span>
       </div>
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/pairing/pair</span>
-        <span class="api-desc">Redeem code, create pending entry</span>
+        <span class="api-desc">Redeem code, create pending entry, return pairing secret</span>
+      </div>
+      <div class="api-row">
+        <span class="method-badge get">GET</span>
+        <span class="api-path">/api/pairing/{id}/status</span>
+        <span class="api-desc">Device polls its entry; device token once approved (pairing secret)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
         <span class="api-path">/api/pairing/pending</span>
-        <span class="api-desc">List pending approvals</span>
+        <span class="api-desc">List pending approvals (admin token)</span>
       </div>
       <div class="api-row">
         <span class="method-badge get">GET</span>
         <span class="api-path">/api/pairing/all</span>
-        <span class="api-desc">List all onboarding entries</span>
+        <span class="api-desc">List all onboarding entries (admin token)</span>
       </div>
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/pairing/{id}/approve</span>
-        <span class="api-desc">Approve pending agent</span>
+        <span class="api-desc">Approve pending agent (admin token)</span>
       </div>
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/pairing/{id}/reject</span>
-        <span class="api-desc">Reject pending agent</span>
+        <span class="api-desc">Reject pending agent (admin token)</span>
       </div>
       <div class="api-row">
         <span class="method-badge post">POST</span>
         <span class="api-path">/api/pairing/{id}/revoke</span>
-        <span class="api-desc">Revoke approved agent</span>
+        <span class="api-desc">Revoke approved agent (admin token)</span>
       </div>
     </div>
   </div>
@@ -1086,6 +1091,7 @@
         <ul class="mitigation-list">
           <li>JWT required for WebSocket upgrade</li>
           <li>Sender verification: JWT sub must match peer_id</li>
+          <li>SDP/ICE relayed only between approved peers (ADR-024)</li>
         </ul>
       </div>
       <div class="glass-card threat-card">

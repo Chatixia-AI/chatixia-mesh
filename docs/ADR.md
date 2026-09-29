@@ -170,7 +170,7 @@
 - (+) Backward compatible — legacy API-key agents are auto-approved
 - (-) In-memory state — pairing data lost on registry restart (matches existing pattern)
 - (-) No push notification on approval — agent must poll `/api/token`
-- (-) Dashboard admin endpoints are unauthenticated (matches existing hub API pattern)
+- (-) Dashboard admin endpoints are unauthenticated (matches existing hub API pattern). Closed by ADR-024 (2026-09-29).
 
 ---
 
@@ -571,3 +571,36 @@ The registry-side race (registering on upgrade) is left as is: glare is legal in
 - Nothing in the code or the security gaps changes; ADR-020 still decides what gets built.
 
 **Related:** ADR-020 (substrate for chatixia-world), ADR-019 (blog at blog.chatixia.net).
+
+---
+
+## ADR-024: Close the Registry's Open Security Gaps (G1–G3)
+
+**Date:** 2026-09-29
+**Status:** Accepted
+
+**Context:** ADR-020 left three gaps in THREAT_MODEL.md open until a chatixia-world phase needed them closed: G1, unauthenticated pairing admin endpoints behind `CorsLayer::permissive()`; G2, `offer`/`answer`/`ice_candidate` relayed without the approval check that gates `register`; G3, registry maps that only ever grow. The chatixia-world cross-NAT run is that need. It puts the registry on a Raspberry Pi behind a public Cloudflare Tunnel (DEPLOYMENT_GUIDE.md, `chatixia-world/scripts/cross-nat/pi-home.sh`). With G1 open, anyone who learns the tunnel URL can approve their own device, and any website can do the same through a visitor's browser. `GET /api/pairing/all` also returned every device token. ADR-023 had already told readers the gaps were open; this ADR closes them.
+
+**Decision:**
+
+1. **Admin token for admin routes (G1, T9).** `GET /api/pairing/pending`, `GET /api/pairing/all` and `POST /api/pairing/{id}/approve|reject|revoke` need the `x-admin-token` header. The token comes from `REGISTRY_ADMIN_TOKEN`. When that is unset or empty the registry generates a random 256-bit token at startup and logs it once, with a hub link that carries it in the URL fragment (the Jupyter pattern), so there is no open default. Tokens are compared in constant time (`subtle`).
+2. **Credential for every other write (T8).** Agent registration, heartbeat, `DELETE /api/registry/agents/{id}`, task submission and task update need the admin token, a known `x-api-key` or an approved `x-device-token`. The Python runner already sent `x-api-key` on these calls; the task-queue fallback in `mesh_skills.py` now sends it too. `POST /api/pairing/generate-code` accepts the admin token or an API key. Reads stay open.
+3. **CORS allowlist.** `CorsLayer::permissive()` is replaced by the origins in `REGISTRY_ALLOWED_ORIGINS` (comma-separated). The default is the loopback registry and hub dev server (`http://localhost:8080`, `http://127.0.0.1:8080`, `http://localhost:5174`, `http://127.0.0.1:5174`); an empty value allows no cross-origin browser access. The bundled hub is same-origin and the Vite dev server proxies, so neither needs CORS.
+4. **Hub sends the token.** The hub keeps the admin token in `sessionStorage`, takes it from `#admin_token=` on load (then strips it from the address bar), and offers an unlock field in the header. A 401 clears the stored token. Without a token the hub still shows agents, tasks and topology; the approval queue is hidden.
+5. **Device tokens reach the device without an open listing.** `POST /api/pairing/pair` now also returns a 256-bit pairing secret. The device polls `GET /api/pairing/{id}/status` with `x-pairing-secret` and gets its device token once approved. `chatixia pair` saves the secret in `.chatixia/pairing.json` and prints the command.
+6. **Relay only between approved peers (G2).** `offer`, `answer` and `ice_candidate` are relayed only when both the sender and the target are approved or legacy (API-key) peers, the same check `register` uses. Other messages are dropped and logged.
+7. **Evict old state (G3).** The existing background loops also remove entries: finished tasks after `REGISTRY_TASK_RETENTION_SECS` (default 3600), agents without a heartbeat for `REGISTRY_AGENT_EVICTION_SECS` (default 3600, never below the 270 s offline mark), rejected and revoked onboarding entries after `REGISTRY_ONBOARDING_RETENTION_SECS` (default 86400), and rate-limit buckets whose attempts have all aged out. Each sweep is one `retain` pass per map.
+8. **No public default JWT secret.** With `SIGNALING_SECRET` unset the registry signs JWTs with a random per-run secret instead of `dev-secret-change-me`. Only the registry verifies JWTs and sidecars fetch a new one on every reconnect, so nothing else needs the value. Without this, anyone could forge a JWT for a legacy peer id and pass the G2 check.
+
+**Consequences:**
+
+- (+) A registry on a public tunnel can no longer be taken over by approving a device, and other websites cannot drive it through a browser.
+- (+) Pending agents really cannot talk to mesh peers, which ADR-009 promised.
+- (+) Memory use of a long-running registry is bounded by activity inside the retention windows, not by uptime.
+- (+) Existing API-key agents and sidecars work unchanged; chatixia-world needs no changes.
+- (-) Anonymous clients that posted heartbeats or tasks without `x-api-key` now get 401. `chatixia` 0.4.4 and older send no key on the task-queue fallback (`delegate`, `mesh_send`, `mesh_broadcast` when P2P is unavailable), so those agents need 0.4.5.
+- (-) Every restart without `REGISTRY_ADMIN_TOKEN` issues a new admin token and invalidates open hub tabs; set the variable for anything long-lived.
+- (-) One shared admin token, no per-user identity or audit store. Reads (agents, tasks with payloads, topology) remain open (T9), and there is still no rate limiting (T4).
+- (-) Any mesh member can still deregister any agent, because the registry cannot bind `agent_id` to a credential (T8 residual).
+
+**Related:** ADR-009 (pairing + approval), ADR-020 (gaps left open until chatixia-world needed them), ADR-023 (public copy pointed at the open gaps), THREAT_MODEL.md (G1–G3, T1, T4, T8, T9, T10).
