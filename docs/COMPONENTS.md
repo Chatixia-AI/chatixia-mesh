@@ -389,7 +389,7 @@ docker compose --profile turn up   # include coturn TURN relay
 | File | Purpose |
 |------|---------|
 | `COMPONENTS.md` | Comprehensive codebase map — read first each session |
-| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-021) |
+| `ADR.md` | Architecture Decision Records (ADR-001 through ADR-023) |
 | `SYSTEM_DESIGN.md` | Architecture, protocols, auth flows, scalability |
 | `GLOSSARY.md` | Domain-specific term definitions |
 | `THREAT_MODEL.md` | Security boundaries, threats, mitigations, production checklist |

@@ -546,3 +546,28 @@ The registry-side race (registering on upgrade) is left as is: glare is legal in
 - (-) Still no integration test that can see this; verified by pausing one sidecar with SIGSTOP past the ICE consent timeout and resuming it.
 
 **Related:** ADR-021 (handshake fixes), ADR-020 (substrate for chatixia-world).
+
+---
+
+## ADR-023: Present chatixia-mesh as a Reference System and Course
+
+**Date:** 2026-09-29
+**Status:** Accepted
+
+**Context:** ADR-020 retired the product roadmap, but the README, the docs site and chatixia.net still pitched the mesh as a product ("The Decentralized Agent Mesh", "Get Started", "on-prem ready", a comparison against CrewAI, AutoGen and LangGraph). That promise is larger than the project backs: THREAT_MODEL.md lists open gaps G1–G3, including unauthenticated pairing admin endpoints. Meanwhile the project's most distinctive public asset is how completely it is explained: an 18-lesson course (`learnings/`, published at blog.chatixia.net), 23 ADRs and a threat model. That matches the Chatixia principle "explain the machine" shared with Chatixia Studio.
+
+**Decision:** Present chatixia-mesh publicly as a working reference system with a course built on it, and as the transport layer for chatixia-world. Specifically:
+
+1. The README, the docs site and chatixia.net lead with "a working agent-to-agent network, and a course on how it's built", and the primary call to action is the course.
+2. Public copy says plainly that the mesh is not a product and not hardened for production, and links to the open gaps.
+3. chatixia-world is named without a link while that repository is private.
+4. Competitor comparisons are replaced by a neutral "design at a glance" table that points to the ADRs and lesson 11 for trade-offs.
+
+**Consequences:**
+
+- (+) Public claims match the code and the threat model.
+- (+) The course and the decision records become the reason to visit, which needs no roadmap.
+- (-) People looking for a deployable agent network are told to look elsewhere or treat this as a starting point.
+- Nothing in the code or the security gaps changes; ADR-020 still decides what gets built.
+
+**Related:** ADR-020 (substrate for chatixia-world), ADR-019 (blog at blog.chatixia.net).
