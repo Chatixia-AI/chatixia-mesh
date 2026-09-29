@@ -1,4 +1,8 @@
 version: 2
+# Minor and patch updates arrive as one grouped PR per ecosystem each week.
+# Major updates still come one per PR so each can be reviewed on its own;
+# for the WebRTC and auth crates (webrtc, jsonwebtoken), wait for the
+# two-sidecar integration test (CI job `integration`) to pass before merging.
 updates:
   - package-ecosystem: cargo
     directory: /
@@ -6,6 +10,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(rust):"
+    groups:
+      rust-minor-and-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /hub
@@ -13,6 +20,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(hub):"
+    groups:
+      hub-minor-and-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: pip
     directory: /agent
@@ -20,6 +30,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(agent):"
+    groups:
+      agent-minor-and-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -27,3 +40,6 @@ updates:
       interval: weekly
     commit-message:
       prefix: "deps(ci):"
+    groups:
+      actions:
+        patterns: ["*"]
