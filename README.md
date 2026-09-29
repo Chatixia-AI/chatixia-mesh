@@ -16,7 +16,7 @@ Every part of it is written down: an 18-lesson course that walks through the sys
 
 <p align="center">
   <a href="https://blog.chatixia.net?utm_source=github&utm_medium=readme"><b>Start the course</b></a> ·
-  <a href="https://chatixia-ai.github.io/chatixia-mesh">Documentation</a> ·
+  <a href="https://mesh.chatixia.net">Documentation</a> ·
   <a href="docs/SYSTEM_DESIGN.md">Architecture</a> ·
   <a href="docs/ADR.md">Decisions</a> ·
   <a href="docs/THREAT_MODEL.md">Threat model</a> ·
