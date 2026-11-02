@@ -2,6 +2,7 @@
 name = "chatixia"
 version = "0.4.5"
 description = "Deploy and run AI agents on the Chatixia mesh network"
+authors = [{ name = "Adrian Tam", email = "chatixia.dev@gmail.com" }]
 # readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
