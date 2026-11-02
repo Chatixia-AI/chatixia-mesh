@@ -12,7 +12,7 @@ If you discover a security vulnerability in chatixia-mesh, please report it resp
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **security@chatixia.ai** with:
+Instead, please email **chatixia.dev@gmail.com** with:
 
 1. A description of the vulnerability
 2. Steps to reproduce the issue
